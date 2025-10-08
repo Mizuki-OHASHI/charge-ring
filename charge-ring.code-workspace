@@ -1,0 +1,16 @@
+{
+    "folders": [
+        {
+            "name": "root",
+            "path": "."
+        },
+        {
+            "name": "FEniCS",
+            "path": "./FEniCS"
+        },
+        {
+            "name": "NGSpy",
+            "path": "./NGSpy"
+        }
+    ]
+}

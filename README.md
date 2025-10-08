@@ -2,10 +2,6 @@
 
 ## Setup (FEniCS)
 
-### Requirements
-
-Note: This code has been tested only on MacOS (M3) and WSL2 (Ubuntu 22.04).
-
 ### Install dependencies
 
 Conda maybe too heavy, so we use `micromamba` here.
@@ -14,11 +10,12 @@ Conda maybe too heavy, so we use `micromamba` here.
 micromamba create -n fem2 -c conda-forge python=3.11 gmsh python-gmsh fenics-dolfinx adios4dolfinx numpy scipy matplotlib -y
 ```
 
-### Activate environment
+### Run the code
 
 ```sh
 micromamba activate fem2
-python main.py [--help]
+python main.py
+# --help for more options
 ```
 
 <!-- 
@@ -53,3 +50,24 @@ pip install scipy adios4dolfinx
 mpiexec -n 1 python main.py --petsc-args -vec_type cuda -mat_type aijcusparse
 ```
 -->
+
+## Setup (NGSpy)
+
+### Install dependencies
+
+Installing via `conda` does not work well at least on MacOS (M3) and WSL2 (Ubuntu 22.04). So we use `pip` here.
+
+```sh
+pip install netgen ngspy
+```
+
+### Run the code
+
+```sh
+python main.py
+# --help for more options
+```
+
+## Note
+
+This code has been tested only on MacOS (M3) and WSL2 (Ubuntu 22.04).
