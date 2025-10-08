@@ -285,18 +285,32 @@ def create_mesh(geom: GeometricParameters):
     O = geo.AppendPoint(0, 0)  # SiO2/真空界面（原点）
 
     # 探針の点
-    tipO = (0, tip_z_dimless + tip_radius_dimless)  # 円弧の中心（参照用）
-    tip1 = geo.AppendPoint(0, tip_z_dimless)  # 探針最下点
+    # 円弧の中心座標（計算用）
+    tipO_x = 0
+    tipO_y = tip_z_dimless + tip_radius_dimless
+    
+    tip1 = geo.AppendPoint(0, tip_z_dimless)  # 探針最下点（円弧始点）
+    
+    # 円弧終点
     tip2 = geo.AppendPoint(
         tip_radius_dimless * np.cos(tip_slope_angle),
         tip_z_dimless + tip_radius_dimless * (1 - np.sin(tip_slope_angle))
-    )  # 円弧終点
+    )
+    
+    # 円弧上の中間点（spline3用）: 始点と終点の中間角度での点
+    mid_angle = tip_slope_angle / 2  # 90度から始まり、90-tip_slope_angleまでの中間
+    tipM = geo.AppendPoint(
+        tip_radius_dimless * np.sin(mid_angle),
+        tip_z_dimless + tip_radius_dimless * (1 - np.cos(mid_angle))
+    )
+    
+    # 探針の円錐部分終点
     tip3 = geo.AppendPoint(
         tip_radius_dimless * np.cos(tip_slope_angle)
         + (vac_depth_dimless - tip_z_dimless 
            - tip_radius_dimless * (1 - np.sin(tip_slope_angle))) * np.tan(tip_slope_angle),
         vac_depth_dimless
-    )  # 探針の円錐部分終点
+    )
 
     # 遠方境界上の点
     q1 = geo.AppendPoint(R_dimless, -sic_depth_dimless - sio2_depth_dimless)  # SiC底部右端
@@ -304,50 +318,59 @@ def create_mesh(geom: GeometricParameters):
     q3 = geo.AppendPoint(R_dimless, 0)  # SiO2/真空界面右端
     q4 = geo.AppendPoint(R_dimless, vac_depth_dimless)  # 真空層上端
 
-    # SiC領域の境界定義
-    geo.Append(["line", p1, p2], leftdomain=1, rightdomain=0, bc="axis")  # p1p2: 軸
-    geo.Append(["line", p2, q2], leftdomain=1, rightdomain=0)  # p2q2
-    geo.Append(["line", q2, q1], leftdomain=1, rightdomain=0, bc="far-field")  # q2q1
-    geo.Append(["line", q1, p1], leftdomain=1, rightdomain=0, bc="ground")  # q1p1
-
-    # SiO2領域の境界定義
-    geo.Append(["line", O, p2], leftdomain=2, rightdomain=0, bc="axis")  # Op2: 軸
-    geo.Append(["line", p2, q2], leftdomain=2, rightdomain=1)  # p2q2 (SiC境界と共有)
-    geo.Append(["line", q2, q3], leftdomain=2, rightdomain=0, bc="far-field")  # q2q3
-    geo.Append(["line", q3, O], leftdomain=2, rightdomain=0, bc="sic_sio2_interface")  # q3O: SiC/SiO2界面
-
-    # 真空領域の境界定義
-    geo.Append(["line", O, tip1], leftdomain=3, rightdomain=0, bc="axis")  # Ot1: 軸
-    # 探針先端の円弧 (tip1 -> tip2, 中心 tipO)
-    geo.Append(["spline3", tip1, tipO, tip2], leftdomain=3, rightdomain=0, bc="tip")
-    geo.Append(["line", tip2, tip3], leftdomain=3, rightdomain=0, bc="tip")  # t2t3
-    geo.Append(["line", tip3, q4], leftdomain=3, rightdomain=0)  # t3q4
-    geo.Append(["line", q4, q3], leftdomain=3, rightdomain=0, bc="far-field")  # q4q3
-    geo.Append(["line", q3, O], leftdomain=3, rightdomain=2, bc="sic_sio2_interface")  # q3O (SiO2境界と共有)
+    # 境界の定義（共有境界は一度だけ定義し、leftdomainとrightdomainで両側を指定）
+    # 各領域は反時計回りに閉じたループを形成
+    
+    # Domain 1 (SiC): p1 → p2 → q2 → q1 → p1
+    geo.Append(["line", p1, p2], leftdomain=1, rightdomain=0, bc="axis")
+    geo.Append(["line", p2, q2], leftdomain=1, rightdomain=2)  # SiC/SiO2共有境界
+    geo.Append(["line", q2, q1], leftdomain=1, rightdomain=0, bc="far-field")
+    geo.Append(["line", q1, p1], leftdomain=1, rightdomain=0, bc="ground")
+    
+    # Domain 2 (SiO2): p2 → O → q3 → q2 (→ p2は既に定義済み)
+    geo.Append(["line", p2, O], leftdomain=2, rightdomain=0, bc="axis")
+    geo.Append(["line", O, q3], leftdomain=2, rightdomain=3, bc="sic_sio2_interface")  # SiO2/vacuum共有境界
+    geo.Append(["line", q3, q2], leftdomain=2, rightdomain=0, bc="far-field")
+    # p2→q2は既に定義済み（Domain 1で）
+    
+    # Domain 3 (vacuum): O → tip1 → tipM → tip2 → tip3 → q4 → q3 (→ Oは既に定義済み)
+    geo.Append(["line", O, tip1], leftdomain=3, rightdomain=0, bc="axis")
+    geo.Append(["spline3", tip1, tipM, tip2], leftdomain=3, rightdomain=0, bc="tip")
+    geo.Append(["line", tip2, tip3], leftdomain=3, rightdomain=0, bc="tip")
+    geo.Append(["line", tip3, q4], leftdomain=3, rightdomain=0)
+    geo.Append(["line", q4, q3], leftdomain=3, rightdomain=0, bc="far-field")
+    # O→q3は既に定義済み（Domain 2で）
 
     # 領域のマテリアル名を設定
     geo.SetMaterial(1, "sic")
     geo.SetMaterial(2, "sio2")
     geo.SetMaterial(3, "vacuum")
 
+    # ジオメトリ情報をデバッグ出力
+    logger.info("Geometry defined with:")
+    logger.info(f"  - Domain radius: {R_dimless:.2f}")
+    logger.info(f"  - SiC depth: {sic_depth_dimless:.2f}")
+    logger.info(f"  - SiO2 thickness: {sio2_depth_dimless:.2f}")
+    logger.info(f"  - Vacuum height: {vac_depth_dimless:.2f}")
+    logger.info(f"  - Tip radius: {tip_radius_dimless:.2f}")
+    logger.info(f"  - Tip height: {tip_z_dimless:.2f}")
+    logger.info("Starting mesh generation...")
+    
     # メッシュサイズの制御
-    # Netgenではポイントごとにmaxhを設定可能
-    # 探針先端付近: 細かく
-    geo.SetMaxh(tip1, 1.0)
-    geo.SetMaxh(tip2, 1.0)
+    # SplineGeometry (2D) では、SetDomainMaxH で領域ごとのメッシュサイズを設定
+    # または GenerateMesh の maxh パラメータでグローバル制御
+    # ポイント毎の制御は PointInfo を使うが、ここでは簡潔さのため領域制御を使用
     
-    # SiO2界面: 中間
-    geo.SetMaxh(O, 2.5)
-    geo.SetMaxh(p2, 2.5)
-    geo.SetMaxh(q3, 2.5)
+    # 領域ごとのメッシュサイズ設定（オプション）
+    # geo.SetDomainMaxH(1, 5.0)  # SiC: やや粗く
+    # geo.SetDomainMaxH(2, 2.5)  # SiO2: 中間
+    # geo.SetDomainMaxH(3, 1.0)  # 真空(探針含む): 細かく
     
-    # 遠方境界: 粗く
-    geo.SetMaxh(q1, 10.0)
-    geo.SetMaxh(q2, 10.0)
-    geo.SetMaxh(q4, 10.0)
-
-    # メッシュ生成
-    ngmesh = geo.GenerateMesh(maxh=10.0)
+    # メッシュ生成（グローバルな最大要素サイズ）
+    # 最初は粗いメッシュでテスト（maxh=50.0 → 後で調整）
+    # 探針先端付近は自動的に細かくなる傾向がある
+    ngmesh = geo.GenerateMesh(maxh=50.0)
+    logger.info("Mesh generation completed")
     
     # NGSolveのメッシュオブジェクトに変換
     mesh = ng.Mesh(ngmesh)
