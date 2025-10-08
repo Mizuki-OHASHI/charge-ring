@@ -21,6 +21,7 @@ micromamba activate fem2
 python main.py [--help]
 ```
 
+<!-- 
 ## Run using GPU
 
 FEniCSx managed by conda does not support GPU acceleration. You need to build FEniCSx from source with GPU support. The easiest way is to use Docker.
@@ -51,3 +52,4 @@ cd /root/shared
 pip install scipy adios4dolfinx
 mpiexec -n 1 python main.py --petsc-args -vec_type cuda -mat_type aijcusparse
 ```
+-->

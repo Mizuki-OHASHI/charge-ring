@@ -343,9 +343,11 @@ def run_fem_simulation(
 
     # 線形問題 (ラプラス方程式) で初期解を計算
     _warm_start_with_linear_solve(V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_tip, geom)
+    # check_vector_device(u, "potential 'u' after linear solve")
 
     # ホモトピー法で非線形問題を解く
     solve_with_homotopy(F, J, u, bcs, homotopy_charge, homotopy_sigma)
+    # check_vector_device(u, "potential 'u' after nonlinear solve")
 
     # 結果を保存
     save_results(msh, u, epsilon_r, V_c, out_dir)
@@ -525,6 +527,23 @@ def save_results(msh, u, epsilon_r, V_c, out_dir: str):
         logger.info(f"Solution saved to {xdmf_path}")
         logger.info(f"Data for analysis saved to {out_dir}/*.bp")
 
+def check_vector_device(vector, vector_name: str):
+    """
+    dolfinxのベクトルがCPUとGPUのどちらにあるかを確認して表示する
+    """
+    # dolfinx FunctionからPETSc Vecオブジェクトを取得
+    petsc_vec = vector.x.petsc_vec
+    
+    # PETSc Vecの現在のタイプを取得
+    vec_type = petsc_vec.getType()
+    
+    # ランク0のプロセスでのみメッセージを出力
+    if vector.function_space.mesh.comm.rank == 0:
+        if "cuda" in vec_type:
+            logger.info(f"✅ DEBUG: Vector '{vector_name}' is on the GPU (type: {vec_type})")
+        else:
+            logger.warning(f"⚠️ DEBUG: Vector '{vector_name}' is on the CPU (type: {vec_type})")
+
 def main():
     """メイン実行関数"""
     parser = argparse.ArgumentParser(description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System.")
@@ -537,7 +556,7 @@ def main():
     parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
     parser.add_argument("--out_dir", type=str, default="out", help="Output directory for results.")
     parser.add_argument("--plot_fermi", action="store_true", help="Plot the Fermi level determination process.")
-    args, petsc_args = parser.parse_known_args()
+    args, _ = parser.parse_known_args()
     
     if comm.rank == 0:
         os.makedirs(args.out_dir, exist_ok=True)
