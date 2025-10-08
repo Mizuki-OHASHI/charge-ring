@@ -1,6 +1,6 @@
 # Charge Ring Simulation by Finite Element Method
 
-## Setup
+## Setup (FEniCS)
 
 ### Requirements
 
