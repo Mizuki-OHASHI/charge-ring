@@ -2,13 +2,20 @@
 
 ## Setup
 
+### Requirements
+
+Note: This code has been tested only on MacOS (M3) and WSL2 (Ubuntu 22.04).
+
 ### Install dependencies
 
-using conda (recommended):
+Conda maybe too heavy, so we use `micromamba` here.
 
 ```sh
-conda create -n fem python=3.11
-conda activate fem
-conda install numpy scipy matplotlib
-conda install conda-forge::fenics-dolfinx
+micromamba create -n fem2 -c conda-forge python=3.11 gmsh python-gmsh fenics-dolfinx adios4dolfinx numpy scipy matplotlib -y
+```
+
+### Activate environment
+
+```sh
+micromamba activate fem2
 ```
