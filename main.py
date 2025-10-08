@@ -5,7 +5,7 @@ import argparse
 from dataclasses import dataclass, asdict
 
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 from scipy.optimize import brentq
 import scipy.constants as const
@@ -126,26 +126,32 @@ def find_fermi_level(params: PhysicalParameters, out_dir: str, plot: bool = Fals
 
 def _plot_fermi_level_determination(params: PhysicalParameters, Ef: float, out_dir: str):
     """フェルミ準位決定の過程をプロットするヘルパー関数"""
-    ee = np.linspace(params.Ev - 0.1, params.Ec + 0.1, 500)
-    p = params.Nv * fermi_dirac_integral((params.Ev - ee) / params.kTeV)
-    n = params.Nc * fermi_dirac_integral((ee - params.Ec) / params.kTeV)
-    Ndp = params.Nd / (1 + 2 * np.exp((ee - params.Ed) / params.kTeV))
+    try:
+        import matplotlib.pyplot as plt
 
-    plt.figure(figsize=(8, 6))
-    plt.plot(ee, p + Ndp, label="Positive Charges ($p + N_D^+$)", color="blue", lw=2)
-    plt.plot(ee, n, label="Negative Charges ($n$)", color="red", lw=2)
-    plt.yscale("log")
-    plt.title("Charge Concentrations vs. Fermi Level")
-    plt.xlabel("Energy Level (E) / eV")
-    plt.ylabel("Concentration / m$^{-3}$")
-    plt.axvline(Ef, color="red", ls="-.", lw=1.5, label=f"Ef = {Ef:.2f} eV")
-    plt.axvline(params.Ec, color="gray", ls=":", label="$E_c$")
-    plt.axvline(params.Ed, color="gray", ls="--", label="$E_d$")
-    plt.axvline(params.Ev, color="gray", ls=":", label="$E_v$")
-    plt.legend()
-    plt.grid(True, which="both", ls="--", alpha=0.5)
-    plt.savefig(os.path.join(out_dir, "fermi_level_determination.png"), dpi=150)
-    plt.close()
+        ee = np.linspace(params.Ev - 0.1, params.Ec + 0.1, 500)
+        p = params.Nv * fermi_dirac_integral((params.Ev - ee) / params.kTeV)
+        n = params.Nc * fermi_dirac_integral((ee - params.Ec) / params.kTeV)
+        Ndp = params.Nd / (1 + 2 * np.exp((ee - params.Ed) / params.kTeV))
+
+        plt.figure(figsize=(8, 6))
+        plt.plot(ee, p + Ndp, label="Positive Charges ($p + N_D^+$)", color="blue", lw=2)
+        plt.plot(ee, n, label="Negative Charges ($n$)", color="red", lw=2)
+        plt.yscale("log")
+        plt.title("Charge Concentrations vs. Fermi Level")
+        plt.xlabel("Energy Level (E) / eV")
+        plt.ylabel("Concentration / m$^{-3}$")
+        plt.axvline(Ef, color="red", ls="-.", lw=1.5, label=f"Ef = {Ef:.2f} eV")
+        plt.axvline(params.Ec, color="gray", ls=":", label="$E_c$")
+        plt.axvline(params.Ed, color="gray", ls="--", label="$E_d$")
+        plt.axvline(params.Ev, color="gray", ls=":", label="$E_v$")
+        plt.legend()
+        plt.grid(True, which="both", ls="--", alpha=0.5)
+        plt.savefig(os.path.join(out_dir, "fermi_level_determination.png"), dpi=150)
+        plt.close()
+    
+    except ImportError:
+        logger.warning("matplotlib is not installed. Skipping Fermi level plot.")
 
 
 def create_mesh(geom: GeometricParameters):
@@ -416,7 +422,8 @@ def _warm_start_with_linear_solve(V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_t
         # bcs[-1].g.value = ScalarType(v_val / V_c) # Update tip voltage
         bc_tip = fem.dirichletbc(ScalarType(v_val / V_c), dofs_tip, V)
         bcs = [bc_ground, bc_tip]
-        problem = LinearProblem(a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+        # problem = LinearProblem(a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+        problem = LinearProblem(a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "gmres", "pc_type": "ilu"}) # optimize for GPU
         uh = problem.solve()
         u.x.array[:] = uh.x.array
         if comm.rank == 0:
@@ -462,9 +469,11 @@ def _solve_homotopy_stage(F, J, u, bcs, homotopy_param, stage_name: str):
     solver.relaxation_parameter = 0.7
 
     ksp = solver.krylov_solver
-    ksp.setType("preonly")
+    # ksp.setType("preonly")
+    ksp.setType("gmres") # optimize for GPU
     pc = ksp.getPC()
-    pc.setType("lu")
+    # pc.setType("lu")
+    pc.setType("ilu") # optimize for GPU
 
     while theta < 1.0 - 1e-12:
         trial = min(1.0, theta + step)
@@ -528,7 +537,7 @@ def main():
     parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
     parser.add_argument("--out_dir", type=str, default="out", help="Output directory for results.")
     parser.add_argument("--plot_fermi", action="store_true", help="Plot the Fermi level determination process.")
-    args = parser.parse_args()
+    args, petsc_args = parser.parse_known_args()
     
     if comm.rank == 0:
         os.makedirs(args.out_dir, exist_ok=True)
