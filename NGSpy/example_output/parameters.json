@@ -27,7 +27,8 @@
     "tip_radius": 45.0,
     "tip_height": 8.0,
     "l_vac": 200.0,
-    "region_radius": 500.0
+    "region_radius": 500.0,
+    "n_tip_arc_points": 7
   },
   "simulation": {
     "V_tip": 2.0

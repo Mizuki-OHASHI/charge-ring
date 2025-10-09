@@ -1,6 +1,6 @@
 {
   "V_c": 0.025851999786435535,
-  "ndof": 236,
+  "ndof": 9952,
   "fes": "H1",
   "order": 1,
   "materials": [
@@ -10,16 +10,19 @@
   ],
   "boundaries": [
     "axis",
-    "default",
+    "sic/sio2",
     "far-field",
     "ground",
     "axis",
     "far-field",
-    "sic_sio2_interface",
+    "sio2/vacuum",
     "axis",
     "tip",
     "tip",
-    "default",
+    "tip",
+    "tip",
+    "tip",
+    "top",
     "far-field"
   ]
 }

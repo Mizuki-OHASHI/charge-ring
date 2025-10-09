@@ -68,6 +68,10 @@ class GeometricParameters:
     tip_height: float = 8.0  # 探針と試料の距離 [nm]
     l_vac: float = 200.0  # 真空層の厚さ [nm]
     region_radius: float = 500.0  # 計算領域の半径 [nm]
+    n_tip_arc_points: int = 7  # 探針円弧部分の中間点数 (奇数)
+
+    def __post_init__(self):
+        assert self.n_tip_arc_points % 2 == 1, "n_tip_arc_points should be odd"
 
 
 def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
@@ -159,41 +163,43 @@ def create_mesh(geom: GeometricParameters):
     sic_depth_dimless = (geom.l_vac - geom.l_sio2) * 1e-9 / L_c
     tip_z_dimless = geom.tip_height * 1e-9 / L_c
     tip_radius_dimless = geom.tip_radius * 1e-9 / L_c
-    tip_slope_angle = 15 * np.pi / 180  # 75 deg tip angle -> 15 deg slope
-
+    tip_arc_angle = 75 * np.pi / 180  # 探針円弧の中心角
+    n_middle_points = geom.n_tip_arc_points
     # SplineGeometry で2D軸対称ジオメトリを構築
     geo = SplineGeometry()
 
     # 点の定義 (中心軸上 r=0)
     p1 = geo.AppendPoint(0, -sic_depth_dimless - sio2_depth_dimless)  # SiC底部
     p2 = geo.AppendPoint(0, -sio2_depth_dimless)  # SiC/SiO2界面
-    O = geo.AppendPoint(0, 0)  # SiO2/真空界面 (原点)
+    origin = geo.AppendPoint(0, 0)  # SiO2/真空界面 (原点)
 
-    # 探針の点
+    # 探針の先端
     tip1 = geo.AppendPoint(0, tip_z_dimless)  # 探針最下点 (円弧始点)
 
     # 円弧終点
     tip2 = geo.AppendPoint(
-        tip_radius_dimless * np.cos(tip_slope_angle),
-        tip_z_dimless + tip_radius_dimless * (1 - np.sin(tip_slope_angle)),
+        tip_radius_dimless * np.sin(tip_arc_angle),
+        tip_z_dimless + tip_radius_dimless * (1 - np.cos(tip_arc_angle)),
     )
 
-    # 円弧上の中間点 (spline3用) : 始点と終点の中間角度での点
-    mid_angle = tip_slope_angle / 2  # 90度から始まり、90-tip_slope_angleまでの中間
-    tipM = geo.AppendPoint(
-        tip_radius_dimless * np.sin(mid_angle),
-        tip_z_dimless + tip_radius_dimless * (1 - np.cos(mid_angle)),
-    )
+    # 円弧上の中間点 (spline3用)
+    tipMlst = [
+        geo.AppendPoint(
+            tip_radius_dimless * np.sin(mid_angle),
+            tip_z_dimless + tip_radius_dimless * (1 - np.cos(mid_angle)),
+        )
+        for mid_angle in np.linspace(0, tip_arc_angle, n_middle_points + 2)[1:-1]
+    ]
 
     # 探針の円錐部分終点
     tip3 = geo.AppendPoint(
-        tip_radius_dimless * np.cos(tip_slope_angle)
+        tip_radius_dimless * np.sin(tip_arc_angle)
         + (
             vac_depth_dimless
             - tip_z_dimless
-            - tip_radius_dimless * (1 - np.sin(tip_slope_angle))
+            - tip_radius_dimless * (1 - np.cos(tip_arc_angle))
         )
-        * np.tan(tip_slope_angle),
+        / np.tan(tip_arc_angle),
         vac_depth_dimless,
     )
 
@@ -210,23 +216,27 @@ def create_mesh(geom: GeometricParameters):
 
     # Bottom rectangle (SiC, domain=1): p1 → p2 → q2 → q1 → p1
     geo.Append(["line", p1, p2], bc="axis", leftdomain=0, rightdomain=1)
-    geo.Append(["line", p2, q2], bc=10, leftdomain=2, rightdomain=1)  # 共有境界
+    geo.Append(["line", p2, q2], bc="sic/sio2", leftdomain=2, rightdomain=1)
     geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
     geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
 
-    # Middle rectangle (SiO2, domain=2): p2 → O → q3 → q2
+    # Middle rectangle (SiO2, domain=2): p2 → origin → q3 → q2
     # p2→q2 は既に定義済み
-    geo.Append(["line", O, p2], bc="axis", leftdomain=2, rightdomain=0)
+    geo.Append(["line", origin, p2], bc="axis", leftdomain=2, rightdomain=0)
     geo.Append(["line", q2, q3], bc="far-field", leftdomain=2, rightdomain=0)
-    geo.Append(
-        ["line", q3, O], bc="sic_sio2_interface", leftdomain=2, rightdomain=3
-    )  # 共有境界
+    geo.Append(["line", q3, origin], bc="sio2/vacuum", leftdomain=2, rightdomain=3)
 
-    # Top with tip (vacuum, domain=3): O → tip1 → tip2 → tip3 → q4 → q3
-    geo.Append(["line", O, tip1], bc="axis", leftdomain=0, rightdomain=3)
-    geo.Append(["spline3", tip1, tipM, tip2], bc="tip", leftdomain=0, rightdomain=3)
+    # Top with tip (vacuum, domain=3): origin → tip1 → tip2 → tip3 → q4 → q3
+    geo.Append(["line", origin, tip1], bc="axis", leftdomain=0, rightdomain=3)
+    for i in range(0, len(tipMlst), 2):
+        points = [
+            tip1 if i == 0 else tipMlst[i - 1],
+            tipMlst[i],
+            tip2 if i == len(tipMlst) - 1 else tipMlst[i + 1],
+        ]
+        geo.Append(["spline3", *points], bc="tip", leftdomain=0, rightdomain=3)
     geo.Append(["line", tip2, tip3], bc="tip", leftdomain=0, rightdomain=3)
-    geo.Append(["line", tip3, q4], bc=10, leftdomain=0, rightdomain=3)
+    geo.Append(["line", tip3, q4], bc="top", leftdomain=0, rightdomain=3)
     geo.Append(["line", q4, q3], bc="far-field", leftdomain=0, rightdomain=3)
     # O→q3 は既に定義済み
 
@@ -247,26 +257,22 @@ def create_mesh(geom: GeometricParameters):
     # ポイント数とセグメント数の確認
     logger.info("Checking geometry integrity...")
     logger.info(
-        f"  - Number of points defined: {len([p1, p2, O, tip1, tipM, tip2, tip3, q1, q2, q3, q4])}"
+        f"  - Number of points defined: {len([p1, p2, origin, tip1, *tipMlst, tip2, tip3, q1, q2, q3, q4])}"
     )
 
     logger.info("Starting mesh generation...")
     logger.info("  (This may take a while for complex geometries...)")
 
     # メッシュサイズの制御
-    # SplineGeometry (2D) では、SetDomainMaxH で領域ごとのメッシュサイズを設定
-    # または GenerateMesh の maxh パラメータでグローバル制御
-    # ポイント毎の制御は PointInfo を使うが、ここでは簡潔さのため領域制御を使用
 
-    # 領域ごとのメッシュサイズ設定 (オプション)
-    # geo.SetDomainMaxH(1, 5.0)  # SiC: やや粗く
-    # geo.SetDomainMaxH(2, 2.5)  # SiO2: 中間
-    # geo.SetDomainMaxH(3, 1.0)  # 真空(探針含む): 細かく
+    # 領域ごとのメッシュサイズ設定
+    # geo.SetDomainMaxH(1, 5.0)  # SiC
+    geo.SetDomainMaxH(2, 2.5)  # SiO2
+    # geo.SetDomainMaxH(3, 1.0)  # 真空
 
     # メッシュ生成 (グローバルな最大要素サイズ)
-    # 最初は粗いメッシュでテスト (maxh=50.0 → 後で調整)
     # 探針先端付近は自動的に細かくなる傾向がある
-    ngmesh = geo.GenerateMesh(maxh=50.0)
+    ngmesh = geo.GenerateMesh(maxh=5)
     logger.info("Mesh generation completed")
 
     # NGSolveのメッシュオブジェクトに変換
@@ -401,7 +407,7 @@ def _setup_weak_form(
     a += epsilon_r * ng.grad(uh) * ng.grad(vh) * r * ng.dx
     a += epsilon_r * lambda_ff * uh * vh * r * ng.ds("far-field")
     a += -rho_dimless * vh * r * ng.dx(definedon=msh.Materials("sic"))
-    a += -sigma_s_dimless * vh * r * ng.ds("sic_sio2_interface")
+    a += -sigma_s_dimless * vh * r * ng.ds("sic/sio2")
 
     return a
 
@@ -415,8 +421,7 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
     v = fes.TestFunction()
 
     # 座標と円筒座標系の半径
-    x, y = ng.x, ng.y
-    r = x  # 円筒座標系の半径方向
+    r = ng.x
 
     # 遠方境界のロビン境界条件パラメータ
     lambda_ff = 1 / (geom.region_radius * 1e-9 / 1e-9)
