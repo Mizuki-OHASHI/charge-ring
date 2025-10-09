@@ -1,0 +1,25 @@
+{
+  "V_c": 0.025851999786435535,
+  "ndof": 236,
+  "fes": "H1",
+  "order": 1,
+  "materials": [
+    "default",
+    "default",
+    "default"
+  ],
+  "boundaries": [
+    "axis",
+    "default",
+    "far-field",
+    "ground",
+    "axis",
+    "far-field",
+    "sic_sio2_interface",
+    "axis",
+    "tip",
+    "tip",
+    "default",
+    "far-field"
+  ]
+}

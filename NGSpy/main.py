@@ -1,22 +1,20 @@
-import os
+import argparse
 import json
 import logging
-import argparse
-from dataclasses import dataclass, asdict
+import os
+from dataclasses import asdict, dataclass
 
-import numpy as np
 import matplotlib.pyplot as plt
-
 import ngsolve as ng
-from netgen.geom2d import SplineGeometry
-
-from scipy.optimize import brentq
+import numpy as np
 import scipy.constants as const
-
-
+from netgen.geom2d import SplineGeometry
+from ngsolve.solvers import Newton
+from scipy.optimize import brentq
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
@@ -25,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PhysicalParameters:
     """シミュレーションで使用する物理パラメータを保持するデータクラス"""
+
     T: float = 300.0  # 温度 [K]
     Nd: float = 1e22  # ドナー濃度 [m^-3]
     Na: float = 0.0  # アクセプタ濃度 [m^-3]
@@ -63,6 +62,7 @@ class PhysicalParameters:
 @dataclass
 class GeometricParameters:
     """ジオメトリ関連のパラメータを保持するデータクラス"""
+
     l_sio2: float = 5.0  # SiO2層の厚さ [nm]
     tip_radius: float = 45.0  # 探針先端の曲率半径 [nm]
     tip_height: float = 8.0  # 探針と試料の距離 [nm]
@@ -76,13 +76,16 @@ def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
         x,
         [x > 25],
         [
-            lambda x: (2 / np.sqrt(np.pi)) * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
+            lambda x: (2 / np.sqrt(np.pi))
+            * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
             lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
         ],
     )
 
 
-def find_fermi_level(params: PhysicalParameters, out_dir: str, plot: bool = False) -> float:
+def find_fermi_level(
+    params: PhysicalParameters, out_dir: str, plot: bool = False
+) -> float:
     """
     電荷中性条件からフェルミ準位を数値的に計算する
 
@@ -94,6 +97,7 @@ def find_fermi_level(params: PhysicalParameters, out_dir: str, plot: bool = Fals
     Returns:
         計算されたフェルミ準位 [eV]
     """
+
     def charge_neutrality_eq(Ef: float) -> float:
         p = params.Nv * fermi_dirac_integral((params.Ev - Ef) / params.kTeV)
         n = params.Nc * fermi_dirac_integral((Ef - params.Ec) / params.kTeV)
@@ -111,7 +115,10 @@ def find_fermi_level(params: PhysicalParameters, out_dir: str, plot: bool = Fals
 
     return Ef
 
-def _plot_fermi_level_determination(params: PhysicalParameters, Ef: float, out_dir: str):
+
+def _plot_fermi_level_determination(
+    params: PhysicalParameters, Ef: float, out_dir: str
+):
     """フェルミ準位決定の過程をプロットするヘルパー関数"""
 
     ee = np.linspace(params.Ev - 0.1, params.Ec + 0.1, 500)
@@ -143,7 +150,7 @@ def create_mesh(geom: GeometricParameters):
     Args:
         geom: ジオメトリパラメータ
     """
-    
+
     # # ジオメトリの無次元化 (代表長さ L_c = 1 nm)
     # L_c = 1e-9
     # R_dimless = geom.region_radius * 1e-9 / L_c
@@ -288,52 +295,59 @@ def create_mesh(geom: GeometricParameters):
     # 円弧の中心座標（計算用）
     tipO_x = 0
     tipO_y = tip_z_dimless + tip_radius_dimless
-    
+
     tip1 = geo.AppendPoint(0, tip_z_dimless)  # 探針最下点（円弧始点）
-    
+
     # 円弧終点
     tip2 = geo.AppendPoint(
         tip_radius_dimless * np.cos(tip_slope_angle),
-        tip_z_dimless + tip_radius_dimless * (1 - np.sin(tip_slope_angle))
+        tip_z_dimless + tip_radius_dimless * (1 - np.sin(tip_slope_angle)),
     )
-    
+
     # 円弧上の中間点（spline3用）: 始点と終点の中間角度での点
     mid_angle = tip_slope_angle / 2  # 90度から始まり、90-tip_slope_angleまでの中間
     tipM = geo.AppendPoint(
         tip_radius_dimless * np.sin(mid_angle),
-        tip_z_dimless + tip_radius_dimless * (1 - np.cos(mid_angle))
+        tip_z_dimless + tip_radius_dimless * (1 - np.cos(mid_angle)),
     )
-    
+
     # 探針の円錐部分終点
     tip3 = geo.AppendPoint(
         tip_radius_dimless * np.cos(tip_slope_angle)
-        + (vac_depth_dimless - tip_z_dimless 
-           - tip_radius_dimless * (1 - np.sin(tip_slope_angle))) * np.tan(tip_slope_angle),
-        vac_depth_dimless
+        + (
+            vac_depth_dimless
+            - tip_z_dimless
+            - tip_radius_dimless * (1 - np.sin(tip_slope_angle))
+        )
+        * np.tan(tip_slope_angle),
+        vac_depth_dimless,
     )
 
     # 遠方境界上の点
-    q1 = geo.AppendPoint(R_dimless, -sic_depth_dimless - sio2_depth_dimless)  # SiC底部右端
+    q1 = geo.AppendPoint(
+        R_dimless, -sic_depth_dimless - sio2_depth_dimless
+    )  # SiC底部右端
     q2 = geo.AppendPoint(R_dimless, -sio2_depth_dimless)  # SiC/SiO2界面右端
     q3 = geo.AppendPoint(R_dimless, 0)  # SiO2/真空界面右端
     q4 = geo.AppendPoint(R_dimless, vac_depth_dimless)  # 真空層上端
 
     # 境界の定義（ref.pyのパターンに厳密に従う）
     # 重要: すべての境界を一度だけ定義し、共有境界はleftdomain/rightdomainで指定
-    
+
     # Bottom rectangle (SiC, domain=1): p1 → p2 → q2 → q1 → p1
     geo.Append(["line", p1, p2], bc="axis", leftdomain=0, rightdomain=1)
     geo.Append(["line", p2, q2], bc=10, leftdomain=2, rightdomain=1)  # 共有境界
     geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
     geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
-    
+
     # Middle rectangle (SiO2, domain=2): p2 → O → q3 → q2
     # p2→q2 は既に定義済み
     geo.Append(["line", O, p2], bc="axis", leftdomain=2, rightdomain=0)
     geo.Append(["line", q2, q3], bc="far-field", leftdomain=2, rightdomain=0)
-    geo.Append(["line", q3, O], bc="sic_sio2_interface", leftdomain=2, rightdomain=3)  # 共有境界
+    geo.Append(
+        ["line", q3, O], bc="sic_sio2_interface", leftdomain=2, rightdomain=3
+    )  # 共有境界
 
-    
     # Top with tip (vacuum, domain=3): O → tip1 → tip2 → tip3 → q4 → q3
     geo.Append(["line", O, tip1], bc="axis", leftdomain=0, rightdomain=3)
     geo.Append(["spline3", tip1, tipM, tip2], bc="tip", leftdomain=0, rightdomain=3)
@@ -350,52 +364,37 @@ def create_mesh(geom: GeometricParameters):
     logger.info(f"  - Vacuum height: {vac_depth_dimless:.2f}")
     logger.info(f"  - Tip radius: {tip_radius_dimless:.2f}")
     logger.info(f"  - Tip height: {tip_z_dimless:.2f}")
-    
+
     # ポイント数とセグメント数の確認
     logger.info("Checking geometry integrity...")
-    logger.info(f"  - Number of points defined: {len([p1, p2, O, tip1, tipM, tip2, tip3, q1, q2, q3, q4])}")
-    
-    # 簡単なジオメトリの整合性チェック
-    try:
-        # ジオメトリをテスト（メッシュ生成前の検証）
-        logger.info("  - Geometry structure appears valid")
-    except Exception as e:
-        logger.error(f"  - Geometry validation failed: {e}")
-        raise
-    
+    logger.info(
+        f"  - Number of points defined: {len([p1, p2, O, tip1, tipM, tip2, tip3, q1, q2, q3, q4])}"
+    )
+
     logger.info("Starting mesh generation...")
     logger.info("  (This may take a while for complex geometries...)")
-    
+
     # メッシュサイズの制御
     # SplineGeometry (2D) では、SetDomainMaxH で領域ごとのメッシュサイズを設定
     # または GenerateMesh の maxh パラメータでグローバル制御
     # ポイント毎の制御は PointInfo を使うが、ここでは簡潔さのため領域制御を使用
-    
+
     # 領域ごとのメッシュサイズ設定（オプション）
     # geo.SetDomainMaxH(1, 5.0)  # SiC: やや粗く
     # geo.SetDomainMaxH(2, 2.5)  # SiO2: 中間
     # geo.SetDomainMaxH(3, 1.0)  # 真空(探針含む): 細かく
-    
+
     # メッシュ生成（グローバルな最大要素サイズ）
     # 最初は粗いメッシュでテスト（maxh=50.0 → 後で調整）
     # 探針先端付近は自動的に細かくなる傾向がある
-    import sys
-    sys.stdout.flush()  # バッファをフラッシュ
-    
-    logger.info("  - Calling GenerateMesh()...")
-    sys.stdout.flush()
-    
     ngmesh = geo.GenerateMesh(maxh=50.0)
-    
-    logger.info("  - GenerateMesh() returned successfully")
-    sys.stdout.flush()
     logger.info("Mesh generation completed")
-    
+
     # NGSolveのメッシュオブジェクトに変換
     mesh = ng.Mesh(ngmesh)
-    
+
     logger.info(f"Mesh generated with {mesh.ne} elements and {mesh.nv} vertices")
-    
+
     return mesh
 
 
@@ -436,7 +435,7 @@ def run_fem_simulation(
 
     # # 弱形式の定義
     # F, J = _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, cell_tags, facet_tags)
-    
+
     # # 境界条件
     # dofs_ground = fem.locate_dofs_topological(V, 1, facet_tags.find(11))
     # bc_ground = fem.dirichletbc(ScalarType(0), dofs_ground, V)
@@ -447,29 +446,32 @@ def run_fem_simulation(
     # 関数空間とテスト/トライアル関数
     fes = ng.H1(msh, order=1)
     u = ng.GridFunction(fes, name="potential_dimless")
-    
+
     # 比誘電率を定義
     epsilon_r = ng.CoefficientFunction([phys.eps_sic, phys.eps_sio2, phys.eps_vac])
-    
+
     # ホモトピーパラメータ
     homotopy_charge = ng.Parameter(0.0)
     homotopy_sigma = ng.Parameter(0.0)
 
     # 弱形式の定義
-    a, f = _setup_weak_form(fes, u, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh)
-    
-     # 境界条件の設定
+    a = _setup_weak_form(
+        fes, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh
+    )
+
+    # 境界条件の設定
     # NGSolveでは境界条件は文字列名で指定
     u.Set(0, definedon=msh.Boundaries("ground"))  # ground境界で u = 0
     u.Set(V_tip / V_c, definedon=msh.Boundaries("tip"))  # tip境界で u = V_tip/V_c
-    
+
     # 線形問題 (ラプラス方程式) で初期解を計算
     _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh)
-    
+
     # ホモトピー法で非線形問題を解く
-    solve_with_homotopy(a, f, u, fes, msh, homotopy_charge, homotopy_sigma)
+    solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma)
 
     save_results(msh, u, epsilon_r, V_c, out_dir)
+
 
 # def _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, cell_tags, facet_tags):
 #     """弱形式とヤコビアンを定義する"""
@@ -492,10 +494,10 @@ def run_fem_simulation(
 #     Ec_dimless = phys.Ec / V_c
 #     Ev_dimless = phys.Ev / V_c
 #     Ed_dimless = phys.Ed / V_c
-    
+
 #     # 電荷密度項（数値的安定性のために電位をクリップ）
 #     u_clip = ufl.max_value(ufl.min_value(u, 160.0), -160.0)
-    
+
 #     def fermi_dirac_ufl(x):
 #         return ufl.conditional(
 #             ufl.gt(x, 25),
@@ -513,77 +515,73 @@ def run_fem_simulation(
 #     L_bulk = rho_dimless * v * r
 #     L_surface = sigma_s_dimless * ufl.avg(v) * r
 #     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
-    
+
 #     F = (a * dx - L_bulk * dx(1) - L_surface * dS(15) + epsilon_r * lambda_ff * u * v * r * ds(13))
 #     J = ufl.derivative(F, u)
-    
+
 #     return F, J
 
-def _setup_weak_form(fes, u, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh):
-    """弱形式を定義する"""
-    
-    # テスト関数
-    v = fes.TestFunction()
-    
-    # 座標と円筒座標系の半径
-    x, y = ng.x, ng.y
-    r = x  # 円筒座標系の半径方向
-    
-    # 無次元化された係数
-    C0 = (const.e * L_c**2) / (const.epsilon_0 * V_c)
-    C_Nc = homotopy_charge * C0 * phys.Nc
-    C_Nv = homotopy_charge * C0 * phys.Nv
-    C_Nd = homotopy_charge * C0 * phys.Nd
-    sigma_s_target = (phys.sigma_s * const.e * L_c) / (const.epsilon_0 * V_c)
-    sigma_s_dimless = homotopy_sigma * sigma_s_target
 
-    # 無次元化されたエネルギー準位
+def _setup_weak_form(
+    fes, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh
+):
+    """NGSolveでの弱形式（非線形項込み）を構築する"""
+
+    uh, vh = fes.TnT()
+    r = ng.x
+
+    # 係数の前処理
+    C0 = (const.e * L_c**2) / (const.epsilon_0 * V_c)
     Ef_dimless = phys.Ef / V_c
     Ec_dimless = phys.Ec / V_c
     Ev_dimless = phys.Ev / V_c
     Ed_dimless = phys.Ed / V_c
-    
-    # 電荷密度項（数値的安定性のために電位をクリップ）
-    u_clip = ng.IfPos(u - 160.0, 160.0, ng.IfPos(-160.0 - u, -160.0, u))
-    
-    def fermi_dirac_ng(x):
-        """NGSolveでのフェルミ・ディラック積分の近似"""
-        return ng.IfPos(
-            x - 25,
-            (2 / np.sqrt(np.pi)) * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
-            ng.exp(x) / (1 + 0.27 * ng.exp(x))
-        )
 
-    n_term = C_Nc * fermi_dirac_ng((Ef_dimless - Ec_dimless) + u_clip)
-    p_term = C_Nv * fermi_dirac_ng((Ev_dimless - Ef_dimless) - u_clip)
-    Ndp_term = C_Nd / (1 + 2 * ng.exp((Ef_dimless - Ed_dimless) + u_clip))
-    rho_dimless = p_term + Ndp_term - n_term
-
-    # 遠方境界のロビン境界条件パラメータ
     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
-    
-    # 双線形形式 (ポアソン方程式の左辺)
+    sigma_s_target = (phys.sigma_s * const.e * L_c) / (const.epsilon_0 * V_c)
+
+    clip_potential = 120.0
+    clip_exp = 40.0
+
+    def clamp(val, bound):
+        return ng.IfPos(val - bound, bound, ng.IfPos(-bound - val, -bound, val))
+
+    def safe_exp(x):
+        x_clip = clamp(x, clip_exp)
+        return ng.exp(x_clip)
+
+    def fermi_dirac_half(x):
+        x_clip = clamp(x, clip_exp)
+        high = (2 / np.sqrt(np.pi)) * (
+            (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
+        )
+        low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
+        return ng.IfPos(x_clip - 25.0, high, low)
+
+    u_clip = clamp(uh, clip_potential)
+
+    # 電荷密度（SiC 領域のみで有効）
+    n_term = C0 * phys.Nc * fermi_dirac_half((Ef_dimless - Ec_dimless) + u_clip)
+    p_term = C0 * phys.Nv * fermi_dirac_half((Ev_dimless - Ef_dimless) - u_clip)
+    Ndp_term = C0 * phys.Nd / (1 + 2 * safe_exp((Ef_dimless - Ed_dimless) + u_clip))
+    rho_dimless = homotopy_charge * (p_term + Ndp_term - n_term)
+
+    sigma_s_dimless = homotopy_sigma * sigma_s_target
+
     a = ng.BilinearForm(fes, symmetric=False)
-    a += epsilon_r * ng.grad(u) * ng.grad(v) * r * ng.dx
-    # 遠方境界でのロビン境界条件
-    a += epsilon_r * lambda_ff * u * v * r * ng.ds("far-field")
-    
-    # 線形形式 (ポアソン方程式の右辺)
-    f = ng.LinearForm(fes)
-    # SiC領域での空間電荷密度 (domain 1)
-    f += rho_dimless * v * r * ng.dx(definedon=msh.Materials("sic"))
-    # SiC/SiO2界面での面電荷密度
-    # NGSolveでは内部境界での積分は dx(skeleton=True) または特殊な扱いが必要
-    # ここでは境界に沿った積分として扱う
-    f += sigma_s_dimless * v * r * ng.ds("sic_sio2_interface")
-    
-    return a, f
+    a += epsilon_r * ng.grad(uh) * ng.grad(vh) * r * ng.dx
+    a += epsilon_r * lambda_ff * uh * vh * r * ng.ds("far-field")
+    a += -rho_dimless * vh * r * ng.dx(definedon=msh.Materials("sic"))
+    a += -sigma_s_dimless * vh * r * ng.ds("sic_sio2_interface")
+
+    return a
+
 
 # def _warm_start_with_linear_solve(V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_tip, geom):
 #     """電圧を徐々に印加しながら線形問題を解き、非線形問題の初期値を準備する"""
 #     if comm.rank == 0:
 #         logger.info("Performing warm-start with linear Poisson equation...")
-    
+
 #     w, v = ufl.TrialFunction(V), ufl.TestFunction(V)
 #     x = ufl.SpatialCoordinate(V.mesh)
 #     r = x[0]
@@ -592,10 +590,10 @@ def _setup_weak_form(fes, u, epsilon_r, phys, V_c, L_c, homotopy_charge, homotop
 #     a_lin = ufl.inner(epsilon_r * ufl.grad(w), ufl.grad(v)) * r * ufl.dx + \
 #             epsilon_r * lambda_ff * w * v * r * ufl.ds(13)
 #     L_lin = fem.Constant(V.mesh, ScalarType(0.0)) * v * ufl.dx
-    
+
 #     u.x.array[:] = 0.0
 #     uh = fem.Function(V)
-    
+
 #     # 電圧を少しずつ上げて解くことで安定性を確保
 #     voltages_warmup = np.linspace(0.0, V_tip, 5)[1:]
 #     for v_val in voltages_warmup:
@@ -609,34 +607,35 @@ def _setup_weak_form(fes, u, epsilon_r, phys, V_c, L_c, homotopy_charge, homotop
 #         if comm.rank == 0:
 #             logger.info(f"  [Linear Warm-up] Solved at V_tip = {v_val:.2f} V")
 
+
 def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
     """電圧を徐々に印加しながら線形問題を解き、非線形問題の初期値を準備する"""
     logger.info("Performing warm-start with linear Poisson equation...")
-    
+
     # テスト関数とトライアル関数
     w = fes.TrialFunction()
     v = fes.TestFunction()
-    
+
     # 座標と円筒座標系の半径
     x, y = ng.x, ng.y
     r = x  # 円筒座標系の半径方向
-    
+
     # 遠方境界のロビン境界条件パラメータ
     lambda_ff = 1 / (geom.region_radius * 1e-9 / 1e-9)
-    
+
     # 線形ポアソン方程式の双線形形式
     a_lin = ng.BilinearForm(fes)
     a_lin += epsilon_r * ng.grad(w) * ng.grad(v) * r * ng.dx
     a_lin += epsilon_r * lambda_ff * w * v * r * ng.ds("far-field")
-    
+
     # 右辺 (ゼロ)
     f_lin = ng.LinearForm(fes)
     # 右辺は0なので項を追加しない
-    
+
     # 初期化
     u.vec[:] = 0.0
     uh = ng.GridFunction(fes)
-    
+
     # 電圧を少しずつ上げて解くことで安定性を確保
     voltages_warmup = np.linspace(0.0, V_tip, 5)[1:]
     for v_val in voltages_warmup:
@@ -644,27 +643,28 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
         uh = ng.GridFunction(fes)
         uh.Set(0, definedon=msh.Boundaries("ground"))
         uh.Set(v_val / V_c, definedon=msh.Boundaries("tip"))
-        
+
         # 双線形形式と線形形式を組み立て
         a_lin.Assemble()
         f_lin.Assemble()
-        
+
         # 右辺を境界条件で修正
         r = f_lin.vec.CreateVector()
         r.data = f_lin.vec - a_lin.mat * uh.vec
-        
+
         # 自由度を取得（Dirichlet境界以外）
         freedofs = fes.FreeDofs()
         freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
         freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
-        
+
         # Dirichlet境界条件を考慮して線形システムを解く
         uh.vec.data += a_lin.mat.Inverse(freedofs, inverse="sparsecholesky") * r
-        
+
         # 結果をuにコピー
         u.vec.data = uh.vec
-        
+
         logger.info(f"  [Linear Warm-up] Solved at V_tip = {v_val:.2f} V")
+
 
 def solve_with_homotopy(F, J, u, bcs, homotopy_charge, homotopy_sigma):
     """
@@ -674,15 +674,11 @@ def solve_with_homotopy(F, J, u, bcs, homotopy_charge, homotopy_sigma):
     """
     # Stage 1: 空間電荷の導入
     homotopy_sigma.value = 0.0
-    _solve_homotopy_stage(
-        F, J, u, bcs, homotopy_charge, stage_name="Space Charge"
-    )
+    _solve_homotopy_stage(F, J, u, bcs, homotopy_charge, stage_name="Space Charge")
 
     # Stage 2: 界面電荷の導入
     homotopy_charge.value = 1.0
-    _solve_homotopy_stage(
-        F, J, u, bcs, homotopy_sigma, stage_name="Interface Charge"
-    )
+    _solve_homotopy_stage(F, J, u, bcs, homotopy_sigma, stage_name="Interface Charge")
 
 
 # def _solve_homotopy_stage(F, J, u, bcs, homotopy_param, stage_name: str):
@@ -714,12 +710,12 @@ def solve_with_homotopy(F, J, u, bcs, homotopy_charge, homotopy_sigma):
 #     while theta < 1.0 - 1e-12:
 #         trial = min(1.0, theta + step)
 #         homotopy_param.value = ScalarType(trial)
-        
+
 #         try:
 #             n, converged = solver.solve(u)
 #         except RuntimeError:
 #             converged = False
-        
+
 #         if converged:
 #             theta = trial
 #             uh.x.array[:] = u.x.array  # 収束した解をバックアップ
@@ -738,103 +734,66 @@ def solve_with_homotopy(F, J, u, bcs, homotopy_charge, homotopy_sigma):
 #             if step < min_step:
 #                 raise RuntimeError(f"Homotopy stage '{stage_name}' failed: step size became too small.")
 
-def solve_with_homotopy(a, f, u, fes, msh, homotopy_charge, homotopy_sigma):
-    """
-    2段階のホモトピー法を用いて非線形問題を解く
-    Stage 1: 空間電荷を徐々に導入
-    Stage 2: 界面電荷を徐々に導入
-    """
-    # Stage 1: 空間電荷の導入
+
+def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma):
+    """ホモトピー法（2段階）で非線形問題を解く"""
+
     homotopy_sigma.Set(0.0)
-    _solve_homotopy_stage(
-        a, f, u, fes, msh, homotopy_charge, stage_name="Space Charge"
-    )
+    _solve_homotopy_stage(a, u, fes, msh, homotopy_charge, "Space Charge")
 
-    # Stage 2: 界面電荷の導入
     homotopy_charge.Set(1.0)
-    _solve_homotopy_stage(
-        a, f, u, fes, msh, homotopy_sigma, stage_name="Interface Charge"
-    )
+    _solve_homotopy_stage(a, u, fes, msh, homotopy_sigma, "Interface Charge")
 
-def _solve_homotopy_stage(a, f, u, fes, msh, homotopy_param, stage_name: str):
-    """ホモトピー法の1ステージを実行する共通関数"""
+
+def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
     logger.info(f"--- Starting Homotopy Stage: {stage_name} ---")
 
     theta = 0.0
     step = 0.1
     min_step = 1e-4
-    
-    # バックアップ用のGridFunction
-    uh = ng.GridFunction(fes)
-    uh.vec.data = u.vec
-    
-    # Newton法のパラメータ
-    max_iterations = 50
-    rtol = 1e-8
-    atol = 1e-10
-    damping = 0.7
+
+    backup = ng.GridFunction(fes)
+    backup.vec.data = u.vec
+
+    freedofs = fes.FreeDofs()
+    freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
+    freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
+
+    newton_kwargs = dict(
+        freedofs=freedofs,
+        maxit=40,
+        maxerr=1e-10,
+        inverse="sparsecholesky",
+        dampfactor=0.7,
+        printing=False,
+    )
 
     while theta < 1.0 - 1e-12:
         trial = min(1.0, theta + step)
         homotopy_param.Set(trial)
-        
-        # 双線形形式と線形形式を再組み立て（パラメータ依存のため）
-        a.Assemble()
-        f.Assemble()
-        
-        # Newton法で非線形問題を解く
-        converged = False
+
         try:
-            # NGSolveのNewton法
-            # 残差ベクトル r = A*u - f
-            res = u.vec.CreateVector()
-            du = u.vec.CreateVector()
-            
-            for iteration in range(max_iterations):
-                # 残差を計算
-                res.data = a.mat * u.vec - f.vec
-                
-                # 残差のノルム
-                res_norm = ng.sqrt(ng.InnerProduct(res, res))
-                
-                if iteration == 0:
-                    res_norm0 = res_norm
-                
-                # 収束判定
-                if res_norm < atol or (res_norm0 > 0 and res_norm / res_norm0 < rtol):
-                    converged = True
-                    n = iteration
-                    break
-                
-                # ヤコビアン行列で線形システムを解く
-                # A * du = -res
-                freedofs = fes.FreeDofs()
-                freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
-                freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
-                du.data = a.mat.Inverse(freedofs, inverse="sparsecholesky") * (-res)
-                
-                # 緩和付き更新
-                u.vec.data += damping * du
-            
-        except Exception as e:
-            logger.warning(f"  [{stage_name} Homotopy: θ→{trial:.3f}] Exception: {e}")
-            converged = False
-        
-        if converged:
+            converged, iter = Newton(a, u, **newton_kwargs)
+            if converged < 0:
+                raise RuntimeError("Newton solver did not converge")
             theta = trial
-            uh.vec.data = u.vec  # 収束した解をバックアップ
-            logger.info(f"  [{stage_name} Homotopy: θ={theta:.3f}] Converged in {n} Newton iterations.")
-            # 収束が速ければステップサイズを増やす
-            if n <= 3 and step < 0.5:
+            backup.vec.data = u.vec
+            logger.info(
+                f"  [{stage_name} Homotopy: θ={theta:.3f}] Converged in {iter} Newton iterations."
+            )
+            if step < 0.5:
                 step *= 1.5
-        else:
-            u.vec.data = uh.vec  # 失敗したので安定した解に戻す
+        except Exception as exc:
+            u.vec.data = backup.vec
             step *= 0.5
             logger.warning(
-                f"  [{stage_name} Homotopy: θ→{trial:.3f}] Failed to converge. Reducing step to {step:.4f}."
+                f"  [{stage_name} Homotopy: θ→{trial:.3f}] Failed ({exc}). Reducing step to {step:.4f}."
             )
             if step < min_step:
-                raise RuntimeError(f"Homotopy stage '{stage_name}' failed: step size became too small.")
+                raise RuntimeError(
+                    f"Homotopy stage '{stage_name}' failed: step size became too small."
+                )
+
 
 def save_results(msh, u, epsilon_r, V_c, out_dir: str):
     """
@@ -862,8 +821,14 @@ def save_results(msh, u, epsilon_r, V_c, out_dir: str):
     # epsilon_r は piecewise なので材料名と値の対応を JSON で保持
     mat_names = list(msh.GetMaterials())
     # 与えた順 [sic, sio2, vacuum] を仮定
-    eps_map = {name: val for name, val in zip(mat_names, [float(v) for v in epsilon_r.components])} \
-              if hasattr(epsilon_r, "components") else {name: None for name in mat_names}
+    eps_map = (
+        {
+            name: val
+            for name, val in zip(mat_names, [float(v) for v in epsilon_r.components])
+        }
+        if hasattr(epsilon_r, "components")
+        else {name: None for name in mat_names}
+    )
     with open(os.path.join(out_dir, "epsilon_r.json"), "w") as f:
         json.dump(eps_map, f, indent=2)
 
@@ -880,18 +845,17 @@ def save_results(msh, u, epsilon_r, V_c, out_dir: str):
         json.dump(meta, f, indent=2)
 
     # 5. VTK 出力
-    try:
-        from ngsolve import VTKOutput
-        vtk = VTKOutput(ma=msh,
-                        coefs=[u],
-                        names=["potential_dimless"],
-                        filename=os.path.join(out_dir, "solution"),
-                        subdivision=0)
-        vtk.Do()
-    except Exception as e:
-        logger.warning(f"VTK export failed: {e}")
+    vtk = ng.VTKOutput(
+        ma=msh,
+        coefs=[u],
+        names=["potential_dimless"],
+        filename=os.path.join(out_dir, "solution"),
+        subdivision=0,
+    )
+    vtk.Do()
 
     logger.info(f"Saved results to {out_dir}")
+
 
 def load_results(out_dir: str, geom: GeometricParameters, V_c: float):
     """
@@ -941,28 +905,52 @@ def load_results(out_dir: str, geom: GeometricParameters, V_c: float):
     logger.info("Loaded solution from disk")
     return msh, u, u_volts
 
+
 def main():
     """メイン実行関数"""
-    parser = argparse.ArgumentParser(description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System.")
-    parser.add_argument("--V_tip", type=float, default=2.0, help="Tip voltage in Volts.")
-    parser.add_argument("--tip_radius", type=float, default=45.0, help="Tip radius in nm.")
-    parser.add_argument("--tip_height", type=float, default=8.0, help="Tip-sample distance in nm.")
-    parser.add_argument("--l_sio2", type=float, default=5.0, help="Thickness of SiO2 layer in nm.")
-    parser.add_argument("--Nd", type=float, default=1e16, help="Donor concentration in cm^-3.")
-    parser.add_argument("--sigma_s", type=float, default=1e11, help="Surface charge density at SiC/SiO2 interface in cm^-2.")
+    parser = argparse.ArgumentParser(
+        description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System."
+    )
+    parser.add_argument(
+        "--V_tip", type=float, default=2.0, help="Tip voltage in Volts."
+    )
+    parser.add_argument(
+        "--tip_radius", type=float, default=45.0, help="Tip radius in nm."
+    )
+    parser.add_argument(
+        "--tip_height", type=float, default=8.0, help="Tip-sample distance in nm."
+    )
+    parser.add_argument(
+        "--l_sio2", type=float, default=5.0, help="Thickness of SiO2 layer in nm."
+    )
+    parser.add_argument(
+        "--Nd", type=float, default=1e16, help="Donor concentration in cm^-3."
+    )
+    parser.add_argument(
+        "--sigma_s",
+        type=float,
+        default=1e11,
+        help="Surface charge density at SiC/SiO2 interface in cm^-2.",
+    )
     parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
-    parser.add_argument("--out_dir", type=str, default="out", help="Output directory for results.")
-    parser.add_argument("--plot_fermi", action="store_true", help="Plot the Fermi level determination process.")
+    parser.add_argument(
+        "--out_dir", type=str, default="out", help="Output directory for results."
+    )
+    parser.add_argument(
+        "--plot_fermi",
+        action="store_true",
+        help="Plot the Fermi level determination process.",
+    )
     args, _ = parser.parse_known_args()
-    
+
     # 出力ディレクトリの作成
     os.makedirs(args.out_dir, exist_ok=True)
 
     # 物理パラメータの初期化 (単位をm^-3, m^-2に変換)
     phys_params = PhysicalParameters(
         T=args.T,
-        Nd=args.Nd * 1e6, # cm^-3 -> m^-3
-        sigma_s=args.sigma_s * 1e4, # cm^-2 -> m^-2
+        Nd=args.Nd * 1e6,  # cm^-3 -> m^-3
+        sigma_s=args.sigma_s * 1e4,  # cm^-2 -> m^-2
     )
 
     # フェルミ準位の計算
@@ -971,26 +959,21 @@ def main():
 
     # ジオメトリパラメータの初期化
     geom_params = GeometricParameters(
-        l_sio2=args.l_sio2,
-        tip_radius=args.tip_radius,
-        tip_height=args.tip_height
+        l_sio2=args.l_sio2, tip_radius=args.tip_radius, tip_height=args.tip_height
     )
 
     # パラメータをJSONファイルに保存
     all_params = {
         "physical": asdict(phys_params),
         "geometric": asdict(geom_params),
-        "simulation": {"V_tip": args.V_tip}
+        "simulation": {"V_tip": args.V_tip},
     }
     with open(os.path.join(args.out_dir, "parameters.json"), "w") as f:
         json.dump(all_params, f, indent=2)
 
     # FEMシミュレーションの実行
     run_fem_simulation(
-        phys=phys_params,
-        geom=geom_params,
-        V_tip=args.V_tip,
-        out_dir=args.out_dir
+        phys=phys_params, geom=geom_params, V_tip=args.V_tip, out_dir=args.out_dir
     )
 
 
