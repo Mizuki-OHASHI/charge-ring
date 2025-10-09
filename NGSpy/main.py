@@ -151,128 +151,6 @@ def create_mesh(geom: GeometricParameters):
         geom: ジオメトリパラメータ
     """
 
-    # # ジオメトリの無次元化 (代表長さ L_c = 1 nm)
-    # L_c = 1e-9
-    # R_dimless = geom.region_radius * 1e-9 / L_c
-    # sio2_depth_dimless = geom.l_sio2 * 1e-9 / L_c
-    # vac_depth_dimless = geom.l_vac * 1e-9 / L_c
-    # sic_depth_dimless = (geom.l_vac - geom.l_sio2) * 1e-9 / L_c
-    # tip_z_dimless = geom.tip_height * 1e-9 / L_c
-    # tip_radius_dimless = geom.tip_radius * 1e-9 / L_c
-    # tip_slope_angle = 15 * np.pi / 180 # 75 deg tip angle -> 15 deg slope
-
-    # gmsh.initialize()
-    # gmsh.option.setNumber("General.Terminal", 1 if comm.rank == 0 and logging.getLogger().level == logging.DEBUG else 0)
-    # gmsh.option.setNumber("Geometry.Tolerance", 1e-12)
-
-    # # 中心軸上 r=0
-    # p1 = gmsh.model.geo.addPoint(0, -sic_depth_dimless - sio2_depth_dimless, 0)
-    # p2 = gmsh.model.geo.addPoint(0, -sio2_depth_dimless, 0)
-    # O = gmsh.model.geo.addPoint(0, 0, 0)
-
-    # # 探針
-    # tipO = gmsh.model.geo.addPoint(0, tip_z_dimless + tip_radius_dimless, 0)
-    # tip1 = gmsh.model.geo.addPoint(0, tip_z_dimless, 0)
-    # tip2 = gmsh.model.geo.addPoint(
-    #     tip_radius_dimless * np.cos(tip_slope_angle),
-    #     tip_z_dimless + tip_radius_dimless * (1 - np.sin(tip_slope_angle)),
-    #     0,
-    # )
-    # tip3 = gmsh.model.geo.addPoint(
-    #     tip_radius_dimless * np.cos(tip_slope_angle)
-    #     + (
-    #         vac_depth_dimless
-    #         - tip_z_dimless
-    #         - tip_radius_dimless * (1 - np.sin(tip_slope_angle))
-    #     )
-    #     * np.tan(tip_slope_angle),
-    #     vac_depth_dimless,
-    #     0,
-    # )
-
-    # # 遠方境界上
-    # q1 = gmsh.model.geo.addPoint(R_dimless, -sic_depth_dimless - sio2_depth_dimless, 0)
-    # q2 = gmsh.model.geo.addPoint(R_dimless, -sio2_depth_dimless, 0)
-    # q3 = gmsh.model.geo.addPoint(R_dimless, 0, 0)
-    # q4 = gmsh.model.geo.addPoint(R_dimless, vac_depth_dimless, 0)
-
-    # # lines
-    # p1p2 = gmsh.model.geo.addLine(p1, p2)
-    # p2q2 = gmsh.model.geo.addLine(p2, q2)
-    # q2q1 = gmsh.model.geo.addLine(q2, q1)
-    # q1p1 = gmsh.model.geo.addLine(q1, p1)
-    # q2q3 = gmsh.model.geo.addLine(q2, q3)
-    # q3O = gmsh.model.geo.addLine(q3, O)
-    # Op2 = gmsh.model.geo.addLine(O, p2)
-    # Ot1 = gmsh.model.geo.addLine(O, tip1)
-    # tiparc = gmsh.model.geo.addCircleArc(tip1, tipO, tip2)
-    # t2t3 = gmsh.model.geo.addLine(tip2, tip3)
-    # t3q4 = gmsh.model.geo.addLine(tip3, q4)
-    # q4q3 = gmsh.model.geo.addLine(q4, q3)
-
-    # # surfaces
-    # loop_sic = gmsh.model.geo.addCurveLoop([p1p2, p2q2, q2q1, q1p1])
-    # surf_sic = gmsh.model.geo.addPlaneSurface([loop_sic])
-    # loop_sio2 = gmsh.model.geo.addCurveLoop([Op2, p2q2, q2q3, q3O])
-    # surf_sio2 = gmsh.model.geo.addPlaneSurface([loop_sio2])
-    # loop_vac = gmsh.model.geo.addCurveLoop([Ot1, tiparc, t2t3, t3q4, q4q3, q3O])
-    # surf_vac = gmsh.model.geo.addPlaneSurface([loop_vac])
-
-    # gmsh.model.geo.synchronize()
-
-    # # メッシュサイズ制御
-    # gmsh.option.setNumber("Mesh.MeshSizeMin", 1)
-    # gmsh.option.setNumber("Mesh.MeshSizeMax", 10)
-
-    # field_tag_counter = 1
-
-    # # --- Field 1: 探針先端の極微細領域 ---
-    # f_tip = gmsh.model.mesh.field.add("Distance", field_tag_counter)
-    # field_tag_counter += 1
-    # gmsh.model.mesh.field.setNumbers(f_tip, "CurvesList", [tiparc, Ot1])
-    # f_thresh_tip = gmsh.model.mesh.field.add("Threshold", field_tag_counter)
-    # field_tag_counter += 1
-    # gmsh.model.mesh.field.setNumber(f_thresh_tip, "InField", f_tip)
-    # gmsh.model.mesh.field.setNumber(f_thresh_tip, "SizeMin", 1)
-    # gmsh.model.mesh.field.setNumber(f_thresh_tip, "SizeMax", 10)
-    # gmsh.model.mesh.field.setNumber(f_thresh_tip, "DistMin", 10)
-    # gmsh.model.mesh.field.setNumber(f_thresh_tip, "DistMax", R_dimless / 5)
-
-    # # --- Field 2: SiO2層とその近傍の中間領域 ---
-    # f_sio2 = gmsh.model.mesh.field.add("Distance", field_tag_counter)
-    # field_tag_counter += 1
-    # # SiO2層を構成する界面
-    # gmsh.model.mesh.field.setNumbers(f_sio2, "CurvesList", [q3O, Op2, p2q2])
-    # f_thresh_sio2 = gmsh.model.mesh.field.add("Threshold", field_tag_counter)
-    # field_tag_counter += 1
-    # gmsh.model.mesh.field.setNumber(f_thresh_sio2, "InField", f_sio2)
-    # gmsh.model.mesh.field.setNumber(f_thresh_sio2, "SizeMin", 2.5)
-    # gmsh.model.mesh.field.setNumber(f_thresh_sio2, "SizeMax", 10)
-    # gmsh.model.mesh.field.setNumber(f_thresh_sio2, "DistMin", 10)
-    # gmsh.model.mesh.field.setNumber(f_thresh_sio2, "DistMax", sic_depth_dimless / 2)
-
-    # # --- 複数フィールドの最小値を採用 ---
-    # f_min = gmsh.model.mesh.field.add("Min", field_tag_counter)
-    # gmsh.model.mesh.field.setNumbers(f_min, "FieldsList", [f_thresh_tip, f_thresh_sio2])
-    # gmsh.model.mesh.field.setAsBackgroundMesh(f_min)
-
-    # # Physical groups
-    # gmsh.model.addPhysicalGroup(2, [surf_sic], 1, "sic")
-    # gmsh.model.addPhysicalGroup(2, [surf_sio2], 2, "sio2")
-    # gmsh.model.addPhysicalGroup(2, [surf_vac], 3, "vacuum")
-    # gmsh.model.addPhysicalGroup(1, [q1p1], 11, "ground")
-    # gmsh.model.addPhysicalGroup(1, [p1p2, Op2, tip1], 12, "axis")
-    # gmsh.model.addPhysicalGroup(1, [q2q1, q2q3, q4q3], 13, "far-field")
-    # gmsh.model.addPhysicalGroup(1, [tiparc, t2t3], 14, "tip")
-    # gmsh.model.addPhysicalGroup(1, [q3O], 15, "sic_sio2_interface")
-
-    # gmsh.model.mesh.generate(2)
-    # partitioner = mesh.create_cell_partitioner(mesh.GhostMode.shared_facet)
-    # msh, cell_tags, facet_tags = gmshio.model_to_mesh(gmsh.model, comm, 0, gdim=2, partitioner=partitioner)
-    # gmsh.finalize()
-
-    # return msh, cell_tags, facet_tags
-
     # ジオメトリの無次元化 (代表長さ L_c = 1 nm)
     L_c = 1e-9
     R_dimless = geom.region_radius * 1e-9 / L_c
@@ -289,14 +167,10 @@ def create_mesh(geom: GeometricParameters):
     # 点の定義 (中心軸上 r=0)
     p1 = geo.AppendPoint(0, -sic_depth_dimless - sio2_depth_dimless)  # SiC底部
     p2 = geo.AppendPoint(0, -sio2_depth_dimless)  # SiC/SiO2界面
-    O = geo.AppendPoint(0, 0)  # SiO2/真空界面（原点）
+    O = geo.AppendPoint(0, 0)  # SiO2/真空界面 (原点)
 
     # 探針の点
-    # 円弧の中心座標（計算用）
-    tipO_x = 0
-    tipO_y = tip_z_dimless + tip_radius_dimless
-
-    tip1 = geo.AppendPoint(0, tip_z_dimless)  # 探針最下点（円弧始点）
+    tip1 = geo.AppendPoint(0, tip_z_dimless)  # 探針最下点 (円弧始点)
 
     # 円弧終点
     tip2 = geo.AppendPoint(
@@ -304,7 +178,7 @@ def create_mesh(geom: GeometricParameters):
         tip_z_dimless + tip_radius_dimless * (1 - np.sin(tip_slope_angle)),
     )
 
-    # 円弧上の中間点（spline3用）: 始点と終点の中間角度での点
+    # 円弧上の中間点 (spline3用) : 始点と終点の中間角度での点
     mid_angle = tip_slope_angle / 2  # 90度から始まり、90-tip_slope_angleまでの中間
     tipM = geo.AppendPoint(
         tip_radius_dimless * np.sin(mid_angle),
@@ -331,7 +205,7 @@ def create_mesh(geom: GeometricParameters):
     q3 = geo.AppendPoint(R_dimless, 0)  # SiO2/真空界面右端
     q4 = geo.AppendPoint(R_dimless, vac_depth_dimless)  # 真空層上端
 
-    # 境界の定義（ref.pyのパターンに厳密に従う）
+    # 境界の定義 (ref.pyのパターンに厳密に従う)
     # 重要: すべての境界を一度だけ定義し、共有境界はleftdomain/rightdomainで指定
 
     # Bottom rectangle (SiC, domain=1): p1 → p2 → q2 → q1 → p1
@@ -356,6 +230,11 @@ def create_mesh(geom: GeometricParameters):
     geo.Append(["line", q4, q3], bc="far-field", leftdomain=0, rightdomain=3)
     # O→q3 は既に定義済み
 
+    # 材料の定義
+    geo.SetMaterial(1, "sic")
+    geo.SetMaterial(2, "sio2")
+    geo.SetMaterial(3, "vac")
+
     # ジオメトリ情報をデバッグ出力
     logger.info("Geometry defined with:")
     logger.info(f"  - Domain radius: {R_dimless:.2f}")
@@ -379,13 +258,13 @@ def create_mesh(geom: GeometricParameters):
     # または GenerateMesh の maxh パラメータでグローバル制御
     # ポイント毎の制御は PointInfo を使うが、ここでは簡潔さのため領域制御を使用
 
-    # 領域ごとのメッシュサイズ設定（オプション）
+    # 領域ごとのメッシュサイズ設定 (オプション)
     # geo.SetDomainMaxH(1, 5.0)  # SiC: やや粗く
     # geo.SetDomainMaxH(2, 2.5)  # SiO2: 中間
     # geo.SetDomainMaxH(3, 1.0)  # 真空(探針含む): 細かく
 
-    # メッシュ生成（グローバルな最大要素サイズ）
-    # 最初は粗いメッシュでテスト（maxh=50.0 → 後で調整）
+    # メッシュ生成 (グローバルな最大要素サイズ)
+    # 最初は粗いメッシュでテスト (maxh=50.0 → 後で調整)
     # 探針先端付近は自動的に細かくなる傾向がある
     ngmesh = geo.GenerateMesh(maxh=50.0)
     logger.info("Mesh generation completed")
@@ -418,31 +297,6 @@ def run_fem_simulation(
     L_c = 1e-9  # 代表長さ [1 nm]
     V_c = const.k * phys.T / const.e  # 代表電位 (熱電圧) [V]
 
-    # # 関数空間とテスト/トライアル関数
-    # V = fem.functionspace(msh, ("Lagrange", 1))
-    # u = fem.Function(V, name="potential_dimless")
-    # v = ufl.TestFunction(V)
-
-    # # 比誘電率を定義
-    # epsilon_r = fem.Function(fem.functionspace(msh, ("DG", 0)), name="relative_permittivity")
-    # epsilon_r.x.array[cell_tags.find(1)] = phys.eps_sic
-    # epsilon_r.x.array[cell_tags.find(2)] = phys.eps_sio2
-    # epsilon_r.x.array[cell_tags.find(3)] = phys.eps_vac
-
-    # # ホモトピーパラメータ
-    # homotopy_charge = fem.Constant(msh, ScalarType(0.0))
-    # homotopy_sigma = fem.Constant(msh, ScalarType(0.0))
-
-    # # 弱形式の定義
-    # F, J = _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, cell_tags, facet_tags)
-
-    # # 境界条件
-    # dofs_ground = fem.locate_dofs_topological(V, 1, facet_tags.find(11))
-    # bc_ground = fem.dirichletbc(ScalarType(0), dofs_ground, V)
-    # dofs_tip = fem.locate_dofs_topological(V, 1, facet_tags.find(14))
-    # bc_tip = fem.dirichletbc(ScalarType(V_tip / V_c), dofs_tip, V)
-    # bcs = [bc_ground, bc_tip]
-
     # 関数空間とテスト/トライアル関数
     fes = ng.H1(msh, order=1)
     u = ng.GridFunction(fes, name="potential_dimless")
@@ -473,59 +327,10 @@ def run_fem_simulation(
     save_results(msh, u, epsilon_r, V_c, out_dir)
 
 
-# def _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, cell_tags, facet_tags):
-#     """弱形式とヤコビアンを定義する"""
-#     x = ufl.SpatialCoordinate(u.function_space.mesh)
-#     r = x[0] # 円筒座標系の半径
-#     dx = ufl.Measure("dx", domain=u.function_space.mesh, subdomain_data=cell_tags)
-#     ds = ufl.Measure("ds", domain=u.function_space.mesh, subdomain_data=facet_tags)
-#     dS = ufl.Measure("dS", domain=u.function_space.mesh, subdomain_data=facet_tags)
-
-#     # 無次元化された係数
-#     C0 = (const.e * L_c**2) / (const.epsilon_0 * V_c)
-#     C_Nc = homotopy_charge * C0 * phys.Nc
-#     C_Nv = homotopy_charge * C0 * phys.Nv
-#     C_Nd = homotopy_charge * C0 * phys.Nd
-#     sigma_s_target = (phys.sigma_s * const.e * L_c) / (const.epsilon_0 * V_c)
-#     sigma_s_dimless = homotopy_sigma * sigma_s_target
-
-#     # 無次元化されたエネルギー準位
-#     Ef_dimless = phys.Ef / V_c
-#     Ec_dimless = phys.Ec / V_c
-#     Ev_dimless = phys.Ev / V_c
-#     Ed_dimless = phys.Ed / V_c
-
-#     # 電荷密度項（数値的安定性のために電位をクリップ）
-#     u_clip = ufl.max_value(ufl.min_value(u, 160.0), -160.0)
-
-#     def fermi_dirac_ufl(x):
-#         return ufl.conditional(
-#             ufl.gt(x, 25),
-#             (2 / np.sqrt(np.pi)) * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
-#             ufl.exp(x) / (1 + 0.27 * ufl.exp(x)),
-#         )
-
-#     n_term = C_Nc * fermi_dirac_ufl((Ef_dimless - Ec_dimless) + u_clip)
-#     p_term = C_Nv * fermi_dirac_ufl((Ev_dimless - Ef_dimless) - u_clip)
-#     Ndp_term = C_Nd / (1 + 2 * ufl.exp((Ef_dimless - Ed_dimless) + u_clip))
-#     rho_dimless = p_term + Ndp_term - n_term
-
-#     # ポアソン方程式の弱形式
-#     a = ufl.inner(epsilon_r * ufl.grad(u), ufl.grad(v)) * r
-#     L_bulk = rho_dimless * v * r
-#     L_surface = sigma_s_dimless * ufl.avg(v) * r
-#     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
-
-#     F = (a * dx - L_bulk * dx(1) - L_surface * dS(15) + epsilon_r * lambda_ff * u * v * r * ds(13))
-#     J = ufl.derivative(F, u)
-
-#     return F, J
-
-
 def _setup_weak_form(
     fes, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh
 ):
-    """NGSolveでの弱形式（非線形項込み）を構築する"""
+    """NGSolveでの弱形式 (非線形項込み) を構築する"""
 
     uh, vh = fes.TnT()
     r = ng.x
@@ -540,27 +345,51 @@ def _setup_weak_form(
     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
     sigma_s_target = (phys.sigma_s * const.e * L_c) / (const.epsilon_0 * V_c)
 
+    logger.info(
+        json.dumps(
+            {
+                "L_c": L_c,
+                "V_c": V_c,
+                "C0": C0,
+                "Ef_dimless": Ef_dimless,
+                "Ec_dimless": Ec_dimless,
+                "Ev_dimless": Ev_dimless,
+                "Ed_dimless": Ed_dimless,
+                "lambda_ff": lambda_ff,
+                "sigma_s_target": sigma_s_target,
+            },
+            indent=2,
+        )
+    )
+
     clip_potential = 120.0
     clip_exp = 40.0
 
     def clamp(val, bound):
-        return ng.IfPos(val - bound, bound, ng.IfPos(-bound - val, -bound, val))
+        # return ng.IfPos(val - bound, bound, ng.IfPos(-bound - val, -bound, val))
+        def ngtanh(x):
+            e2x = ng.exp(2 * x)
+            return (e2x - 1) / (e2x + 1)
+
+        return bound * ngtanh(val / bound)
 
     def safe_exp(x):
         x_clip = clamp(x, clip_exp)
         return ng.exp(x_clip)
 
     def fermi_dirac_half(x):
+        # x_clip = clamp(x, clip_exp)
+        # high = (2 / np.sqrt(np.pi)) * (
+        #     (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
+        # )
+        # low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
+        # return ng.IfPos(x_clip - 25.0, high, low)
         x_clip = clamp(x, clip_exp)
-        high = (2 / np.sqrt(np.pi)) * (
-            (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
-        )
-        low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
-        return ng.IfPos(x_clip - 25.0, high, low)
+        return safe_exp(x_clip)
 
     u_clip = clamp(uh, clip_potential)
 
-    # 電荷密度（SiC 領域のみで有効）
+    # 電荷密度 (SiC 領域のみで有効)
     n_term = C0 * phys.Nc * fermi_dirac_half((Ef_dimless - Ec_dimless) + u_clip)
     p_term = C0 * phys.Nv * fermi_dirac_half((Ev_dimless - Ef_dimless) - u_clip)
     Ndp_term = C0 * phys.Nd / (1 + 2 * safe_exp((Ef_dimless - Ed_dimless) + u_clip))
@@ -575,37 +404,6 @@ def _setup_weak_form(
     a += -sigma_s_dimless * vh * r * ng.ds("sic_sio2_interface")
 
     return a
-
-
-# def _warm_start_with_linear_solve(V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_tip, geom):
-#     """電圧を徐々に印加しながら線形問題を解き、非線形問題の初期値を準備する"""
-#     if comm.rank == 0:
-#         logger.info("Performing warm-start with linear Poisson equation...")
-
-#     w, v = ufl.TrialFunction(V), ufl.TestFunction(V)
-#     x = ufl.SpatialCoordinate(V.mesh)
-#     r = x[0]
-#     lambda_ff = 1 / (geom.region_radius * 1e-9 / 1e-9)
-
-#     a_lin = ufl.inner(epsilon_r * ufl.grad(w), ufl.grad(v)) * r * ufl.dx + \
-#             epsilon_r * lambda_ff * w * v * r * ufl.ds(13)
-#     L_lin = fem.Constant(V.mesh, ScalarType(0.0)) * v * ufl.dx
-
-#     u.x.array[:] = 0.0
-#     uh = fem.Function(V)
-
-#     # 電圧を少しずつ上げて解くことで安定性を確保
-#     voltages_warmup = np.linspace(0.0, V_tip, 5)[1:]
-#     for v_val in voltages_warmup:
-#         # bcs[-1].g.value = ScalarType(v_val / V_c) # Update tip voltage
-#         bc_tip = fem.dirichletbc(ScalarType(v_val / V_c), dofs_tip, V)
-#         bcs = [bc_ground, bc_tip]
-#         # problem = LinearProblem(a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
-#         problem = LinearProblem(a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "gmres", "pc_type": "ilu"}) # optimize for GPU
-#         uh = problem.solve()
-#         u.x.array[:] = uh.x.array
-#         if comm.rank == 0:
-#             logger.info(f"  [Linear Warm-up] Solved at V_tip = {v_val:.2f} V")
 
 
 def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
@@ -639,7 +437,7 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
     # 電圧を少しずつ上げて解くことで安定性を確保
     voltages_warmup = np.linspace(0.0, V_tip, 5)[1:]
     for v_val in voltages_warmup:
-        # 境界条件を設定（初期化）
+        # 境界条件を設定 (初期化)
         uh = ng.GridFunction(fes)
         uh.Set(0, definedon=msh.Boundaries("ground"))
         uh.Set(v_val / V_c, definedon=msh.Boundaries("tip"))
@@ -652,7 +450,7 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
         r = f_lin.vec.CreateVector()
         r.data = f_lin.vec - a_lin.mat * uh.vec
 
-        # 自由度を取得（Dirichlet境界以外）
+        # 自由度を取得 (Dirichlet境界以外)
         freedofs = fes.FreeDofs()
         freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
         freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
@@ -666,77 +464,8 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
         logger.info(f"  [Linear Warm-up] Solved at V_tip = {v_val:.2f} V")
 
 
-def solve_with_homotopy(F, J, u, bcs, homotopy_charge, homotopy_sigma):
-    """
-    2段階のホモトピー法を用いて非線形問題を解く
-    Stage 1: 空間電荷を徐々に導入
-    Stage 2: 界面電荷を徐々に導入
-    """
-    # Stage 1: 空間電荷の導入
-    homotopy_sigma.value = 0.0
-    _solve_homotopy_stage(F, J, u, bcs, homotopy_charge, stage_name="Space Charge")
-
-    # Stage 2: 界面電荷の導入
-    homotopy_charge.value = 1.0
-    _solve_homotopy_stage(F, J, u, bcs, homotopy_sigma, stage_name="Interface Charge")
-
-
-# def _solve_homotopy_stage(F, J, u, bcs, homotopy_param, stage_name: str):
-#     """ホモトピー法の1ステージを実行する共通関数"""
-#     if comm.rank == 0:
-#         logger.info(f"--- Starting Homotopy Stage: {stage_name} ---")
-
-#     theta = 0.0
-#     step = 0.1
-#     min_step = 1e-4
-#     uh = fem.Function(u.function_space)
-#     uh.x.array[:] = u.x.array
-
-#     problem = NonlinearProblem(F, u, bcs=bcs, J=J)
-#     solver = NewtonSolver(comm, problem)
-#     solver.convergence_criterion = "residual"
-#     solver.rtol = 1e-8
-#     solver.atol = 1e-10
-#     solver.max_it = 50
-#     solver.relaxation_parameter = 0.7
-
-#     ksp = solver.krylov_solver
-#     # ksp.setType("preonly")
-#     ksp.setType("gmres") # optimize for GPU
-#     pc = ksp.getPC()
-#     # pc.setType("lu")
-#     pc.setType("ilu") # optimize for GPU
-
-#     while theta < 1.0 - 1e-12:
-#         trial = min(1.0, theta + step)
-#         homotopy_param.value = ScalarType(trial)
-
-#         try:
-#             n, converged = solver.solve(u)
-#         except RuntimeError:
-#             converged = False
-
-#         if converged:
-#             theta = trial
-#             uh.x.array[:] = u.x.array  # 収束した解をバックアップ
-#             if comm.rank == 0:
-#                 logger.info(f"  [{stage_name} Homotopy: θ={theta:.3f}] Converged in {n} Newton iterations.")
-#             # 収束が速ければステップサイズを増やす
-#             if n <= 3 and step < 0.5:
-#                 step *= 1.5
-#         else:
-#             u.x.array[:] = uh.x.array  # 失敗したので安定した解に戻す
-#             step *= 0.5
-#             if comm.rank == 0:
-#                 logger.warning(
-#                     f"  [{stage_name} Homotopy: θ→{trial:.3f}] Failed to converge. Reducing step to {step:.4f}."
-#                 )
-#             if step < min_step:
-#                 raise RuntimeError(f"Homotopy stage '{stage_name}' failed: step size became too small.")
-
-
 def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma):
-    """ホモトピー法（2段階）で非線形問題を解く"""
+    """ホモトピー法 (2段階) で非線形問題を解く"""
 
     homotopy_sigma.Set(0.0)
     _solve_homotopy_stage(a, u, fes, msh, homotopy_charge, "Space Charge")
@@ -761,7 +490,7 @@ def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
 
     newton_kwargs = dict(
         freedofs=freedofs,
-        maxit=40,
+        maxit=100,
         maxerr=1e-10,
         inverse="sparsecholesky",
         dampfactor=0.7,
@@ -771,6 +500,7 @@ def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
     while theta < 1.0 - 1e-12:
         trial = min(1.0, theta + step)
         homotopy_param.Set(trial)
+        a.Assemble()
 
         try:
             converged, iter = Newton(a, u, **newton_kwargs)
@@ -817,10 +547,10 @@ def save_results(msh, u, epsilon_r, V_c, out_dir: str):
     np.save(os.path.join(out_dir, "u_dimless.npy"), u_np)
     np.save(os.path.join(out_dir, "u_volts.npy"), u_np * V_c)
 
-    # 3. 誘電率（領域順に）を保存
+    # 3. 誘電率 (領域順に) を保存
     # epsilon_r は piecewise なので材料名と値の対応を JSON で保持
     mat_names = list(msh.GetMaterials())
-    # 与えた順 [sic, sio2, vacuum] を仮定
+    # 与えた順 [sic, sio2, vacuum]
     eps_map = (
         {
             name: val
@@ -874,7 +604,7 @@ def load_results(out_dir: str, geom: GeometricParameters, V_c: float):
     >>> geom = GeometricParameters()
     >>> msh2, u_loaded, uV = load_results("out", geom, V_c)
     """
-    # メッシュ再生成（パラメータ変更していると整合しない）
+    # メッシュ再生成 (パラメータ変更していると整合しない)
     msh = create_mesh(geom)
     fes = ng.H1(msh, order=1)
     u = ng.GridFunction(fes, name="potential_dimless")

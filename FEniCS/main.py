@@ -374,6 +374,13 @@ def _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_
     Ec_dimless = phys.Ec / V_c
     Ev_dimless = phys.Ev / V_c
     Ed_dimless = phys.Ed / V_c
+
+    logger.info(json.dumps({
+        "L_c": L_c, "V_c": V_c,
+        "C0": C0, "Ef_dimless": Ef_dimless, "Ec_dimless": Ec_dimless,
+        "Ev_dimless": Ev_dimless, "Ed_dimless": Ed_dimless,
+        "sigma_s_target": sigma_s_target
+    }, indent=2))
     
     # 電荷密度項（数値的安定性のために電位をクリップ）
     u_clip = ufl.max_value(ufl.min_value(u, 160.0), -160.0)

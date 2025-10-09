@@ -1,0 +1,4 @@
+FEniCS/_*/
+NGSpy/_*/
+
+**/__pycache__/

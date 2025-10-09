@@ -9,19 +9,20 @@
 #   ∫_Ω (2π r) ε ∇u·∇v dΩ + ∫_Ω (2π r) (PB反応) v dΩ = 0
 #   r := sqrt(x^2 + ε^2)（ε→0で標準軸対称に一致）⇒ 原点で自然に ∂u/∂r = 0（Neumann）を実現
 
-import math
 import csv
+import datetime
+import math
+import os
+import time
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from ngsolve import *
 from netgen.geom2d import SplineGeometry
-from ngsolve.webgui import Draw
+from ngsolve import *
 from ngsolve.solvers import *
-import matplotlib.pyplot as plt
-from pathlib import Path
-import datetime, os
-import time
-from netgen.geom2d import unit_square
+from ngsolve.webgui import Draw
 
 t1 = time.time()
 
@@ -339,7 +340,7 @@ if os.path.exists("exp_data.csv"):
     R_exp = exp_df.iloc[:, 1]
     ax.plot(Vs_exp, R_exp, color="k", marker="s", label="Experiment")
 for lev in levels:
-    ax.plot(Vs_list, R_dict[lev], marker="o", label=f"{lev*1000:.0f} meV")
+    ax.plot(Vs_list, R_dict[lev], marker="o", label=f"{lev * 1000:.0f} meV")
 ax.set_xlabel("Bias Voltage $V_s$ [V]")
 ax.set_ylabel("Ring radius $R$ [nm]")
 ax.set_title(

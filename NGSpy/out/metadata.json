@@ -4,9 +4,9 @@
   "fes": "H1",
   "order": 1,
   "materials": [
-    "default",
-    "default",
-    "default"
+    "sic",
+    "sio2",
+    "vac"
   ],
   "boundaries": [
     "axis",

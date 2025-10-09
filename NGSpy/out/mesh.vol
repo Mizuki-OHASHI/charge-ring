@@ -791,6 +791,11 @@ pointelements
        8         8
        9         9
       10        10
+materials
+3
+1 sic
+2 sio2
+3 vac
 
 
 bcnames
