@@ -1,31 +1,31 @@
-import os
+import argparse
 import json
 import logging
-import argparse
-from dataclasses import dataclass, asdict
+import os
+from dataclasses import asdict, dataclass
 
-import numpy as np
-# import matplotlib.pyplot as plt
-
-from scipy.optimize import brentq
-import scipy.constants as const
-
+import adios4dolfinx
 import gmsh
+import numpy as np
+import scipy.constants as const
 import ufl
 from dolfinx import fem, mesh
-from dolfinx.fem.petsc import NonlinearProblem, LinearProblem
-from dolfinx.nls.petsc import NewtonSolver
+from dolfinx.fem.petsc import LinearProblem, NonlinearProblem
 from dolfinx.io import gmshio
+from dolfinx.io.utils import XDMFFile
+from dolfinx.nls.petsc import NewtonSolver
 from mpi4py import MPI
 from petsc4py.PETSc import ScalarType
-from dolfinx.io.utils import XDMFFile
-import adios4dolfinx
+
+# import matplotlib.pyplot as plt
+from scipy.optimize import brentq
 
 # MPIのランク0でのみログを出力するための設定
 comm = MPI.COMM_WORLD
 if comm.rank == 0:
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PhysicalParameters:
     """シミュレーションで使用する物理パラメータを保持するデータクラス"""
+
     T: float = 300.0  # 温度 [K]
     Nd: float = 1e22  # ドナー濃度 [m^-3]
     Na: float = 0.0  # アクセプタ濃度 [m^-3]
@@ -72,6 +73,7 @@ class PhysicalParameters:
 @dataclass
 class GeometricParameters:
     """ジオメトリ関連のパラメータを保持するデータクラス"""
+
     l_sio2: float = 5.0  # SiO2層の厚さ [nm]
     tip_radius: float = 45.0  # 探針先端の曲率半径 [nm]
     tip_height: float = 8.0  # 探針と試料の距離 [nm]
@@ -85,13 +87,16 @@ def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
         x,
         [x > 25],
         [
-            lambda x: (2 / np.sqrt(np.pi)) * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
+            lambda x: (2 / np.sqrt(np.pi))
+            * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
             lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
         ],
     )
 
 
-def find_fermi_level(params: PhysicalParameters, out_dir: str, plot: bool = False) -> float:
+def find_fermi_level(
+    params: PhysicalParameters, out_dir: str, plot: bool = False
+) -> float:
     """
     電荷中性条件からフェルミ準位を数値的に計算する
 
@@ -103,6 +108,7 @@ def find_fermi_level(params: PhysicalParameters, out_dir: str, plot: bool = Fals
     Returns:
         計算されたフェルミ準位 [eV]
     """
+
     def charge_neutrality_eq(Ef: float) -> float:
         p = params.Nv * fermi_dirac_integral((params.Ev - Ef) / params.kTeV)
         n = params.Nc * fermi_dirac_integral((Ef - params.Ec) / params.kTeV)
@@ -124,7 +130,10 @@ def find_fermi_level(params: PhysicalParameters, out_dir: str, plot: bool = Fals
 
     return Ef
 
-def _plot_fermi_level_determination(params: PhysicalParameters, Ef: float, out_dir: str):
+
+def _plot_fermi_level_determination(
+    params: PhysicalParameters, Ef: float, out_dir: str
+):
     """フェルミ準位決定の過程をプロットするヘルパー関数"""
     try:
         import matplotlib.pyplot as plt
@@ -135,7 +144,9 @@ def _plot_fermi_level_determination(params: PhysicalParameters, Ef: float, out_d
         Ndp = params.Nd / (1 + 2 * np.exp((ee - params.Ed) / params.kTeV))
 
         plt.figure(figsize=(8, 6))
-        plt.plot(ee, p + Ndp, label="Positive Charges ($p + N_D^+$)", color="blue", lw=2)
+        plt.plot(
+            ee, p + Ndp, label="Positive Charges ($p + N_D^+$)", color="blue", lw=2
+        )
         plt.plot(ee, n, label="Negative Charges ($n$)", color="red", lw=2)
         plt.yscale("log")
         plt.title("Charge Concentrations vs. Fermi Level")
@@ -149,7 +160,7 @@ def _plot_fermi_level_determination(params: PhysicalParameters, Ef: float, out_d
         plt.grid(True, which="both", ls="--", alpha=0.5)
         plt.savefig(os.path.join(out_dir, "fermi_level_determination.png"), dpi=150)
         plt.close()
-    
+
     except ImportError:
         logger.warning("matplotlib is not installed. Skipping Fermi level plot.")
 
@@ -168,7 +179,7 @@ def create_mesh(geom: GeometricParameters):
     """
     if comm.rank == 0:
         logger.info("Starting mesh generation with Gmsh...")
-    
+
     # ジオメトリの無次元化 (代表長さ L_c = 1 nm)
     L_c = 1e-9
     R_dimless = geom.region_radius * 1e-9 / L_c
@@ -177,10 +188,13 @@ def create_mesh(geom: GeometricParameters):
     sic_depth_dimless = (geom.l_vac - geom.l_sio2) * 1e-9 / L_c
     tip_z_dimless = geom.tip_height * 1e-9 / L_c
     tip_radius_dimless = geom.tip_radius * 1e-9 / L_c
-    tip_slope_angle = 15 * np.pi / 180 # 75 deg tip angle -> 15 deg slope
+    tip_slope_angle = 15 * np.pi / 180  # 75 deg tip angle -> 15 deg slope
 
     gmsh.initialize()
-    gmsh.option.setNumber("General.Terminal", 1 if comm.rank == 0 and logging.getLogger().level == logging.DEBUG else 0)
+    gmsh.option.setNumber(
+        "General.Terminal",
+        1 if comm.rank == 0 and logging.getLogger().level == logging.DEBUG else 0,
+    )
     gmsh.option.setNumber("Geometry.Tolerance", 1e-12)
 
     # 中心軸上 r=0
@@ -286,7 +300,9 @@ def create_mesh(geom: GeometricParameters):
 
     gmsh.model.mesh.generate(2)
     partitioner = mesh.create_cell_partitioner(mesh.GhostMode.shared_facet)
-    msh, cell_tags, facet_tags = gmshio.model_to_mesh(gmsh.model, comm, 0, gdim=2, partitioner=partitioner)
+    msh, cell_tags, facet_tags = gmshio.model_to_mesh(
+        gmsh.model, comm, 0, gdim=2, partitioner=partitioner
+    )
     gmsh.finalize()
 
     if comm.rank == 0:
@@ -311,7 +327,7 @@ def run_fem_simulation(
         out_dir: 結果を出力するディレクトリ
     """
     msh, cell_tags, facet_tags = create_mesh(geom)
-    
+
     # 無次元化のための代表スケール
     L_c = 1e-9  # 代表長さ [1 nm]
     V_c = const.k * phys.T / const.e  # 代表電位 (熱電圧) [V]
@@ -322,7 +338,9 @@ def run_fem_simulation(
     v = ufl.TestFunction(V)
 
     # 比誘電率を定義
-    epsilon_r = fem.Function(fem.functionspace(msh, ("DG", 0)), name="relative_permittivity")
+    epsilon_r = fem.Function(
+        fem.functionspace(msh, ("DG", 0)), name="relative_permittivity"
+    )
     epsilon_r.x.array[cell_tags.find(1)] = phys.eps_sic
     epsilon_r.x.array[cell_tags.find(2)] = phys.eps_sio2
     epsilon_r.x.array[cell_tags.find(3)] = phys.eps_vac
@@ -332,8 +350,20 @@ def run_fem_simulation(
     homotopy_sigma = fem.Constant(msh, ScalarType(0.0))
 
     # 弱形式の定義
-    F, J = _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, cell_tags, facet_tags)
-    
+    F, J = _setup_weak_form(
+        u,
+        v,
+        epsilon_r,
+        phys,
+        V_c,
+        L_c,
+        homotopy_charge,
+        homotopy_sigma,
+        geom,
+        cell_tags,
+        facet_tags,
+    )
+
     # 境界条件
     dofs_ground = fem.locate_dofs_topological(V, 1, facet_tags.find(11))
     bc_ground = fem.dirichletbc(ScalarType(0), dofs_ground, V)
@@ -342,7 +372,9 @@ def run_fem_simulation(
     bcs = [bc_ground, bc_tip]
 
     # 線形問題 (ラプラス方程式) で初期解を計算
-    _warm_start_with_linear_solve(V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_tip, geom)
+    _warm_start_with_linear_solve(
+        V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_tip, geom
+    )
     # check_vector_device(u, "potential 'u' after linear solve")
 
     # ホモトピー法で非線形問題を解く
@@ -353,10 +385,22 @@ def run_fem_simulation(
     save_results(msh, u, epsilon_r, V_c, out_dir)
 
 
-def _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, cell_tags, facet_tags):
+def _setup_weak_form(
+    u,
+    v,
+    epsilon_r,
+    phys,
+    V_c,
+    L_c,
+    homotopy_charge,
+    homotopy_sigma,
+    geom,
+    cell_tags,
+    facet_tags,
+):
     """弱形式とヤコビアンを定義する"""
     x = ufl.SpatialCoordinate(u.function_space.mesh)
-    r = x[0] # 円筒座標系の半径
+    r = x[0]  # 円筒座標系の半径
     dx = ufl.Measure("dx", domain=u.function_space.mesh, subdomain_data=cell_tags)
     ds = ufl.Measure("ds", domain=u.function_space.mesh, subdomain_data=facet_tags)
     dS = ufl.Measure("dS", domain=u.function_space.mesh, subdomain_data=facet_tags)
@@ -375,16 +419,25 @@ def _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_
     Ev_dimless = phys.Ev / V_c
     Ed_dimless = phys.Ed / V_c
 
-    logger.info(json.dumps({
-        "L_c": L_c, "V_c": V_c,
-        "C0": C0, "Ef_dimless": Ef_dimless, "Ec_dimless": Ec_dimless,
-        "Ev_dimless": Ev_dimless, "Ed_dimless": Ed_dimless,
-        "sigma_s_target": sigma_s_target
-    }, indent=2))
-    
+    logger.info(
+        json.dumps(
+            {
+                "L_c": L_c,
+                "V_c": V_c,
+                "C0": C0,
+                "Ef_dimless": Ef_dimless,
+                "Ec_dimless": Ec_dimless,
+                "Ev_dimless": Ev_dimless,
+                "Ed_dimless": Ed_dimless,
+                "sigma_s_target": sigma_s_target,
+            },
+            indent=2,
+        )
+    )
+
     # 電荷密度項（数値的安定性のために電位をクリップ）
     u_clip = ufl.max_value(ufl.min_value(u, 160.0), -160.0)
-    
+
     def fermi_dirac_ufl(x):
         return ufl.conditional(
             ufl.gt(x, 25),
@@ -402,29 +455,38 @@ def _setup_weak_form(u, v, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_
     L_bulk = rho_dimless * v * r
     L_surface = sigma_s_dimless * ufl.avg(v) * r
     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
-    
-    F = (a * dx - L_bulk * dx(1) - L_surface * dS(15) + epsilon_r * lambda_ff * u * v * r * ds(13))
+
+    F = (
+        a * dx
+        - L_bulk * dx(1)
+        - L_surface * dS(15)
+        + epsilon_r * lambda_ff * u * v * r * ds(13)
+    )
     J = ufl.derivative(F, u)
-    
+
     return F, J
 
-def _warm_start_with_linear_solve(V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_tip, geom):
+
+def _warm_start_with_linear_solve(
+    V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_tip, geom
+):
     """電圧を徐々に印加しながら線形問題を解き、非線形問題の初期値を準備する"""
     if comm.rank == 0:
         logger.info("Performing warm-start with linear Poisson equation...")
-    
+
     w, v = ufl.TrialFunction(V), ufl.TestFunction(V)
     x = ufl.SpatialCoordinate(V.mesh)
     r = x[0]
     lambda_ff = 1 / (geom.region_radius * 1e-9 / 1e-9)
 
-    a_lin = ufl.inner(epsilon_r * ufl.grad(w), ufl.grad(v)) * r * ufl.dx + \
-            epsilon_r * lambda_ff * w * v * r * ufl.ds(13)
+    a_lin = ufl.inner(
+        epsilon_r * ufl.grad(w), ufl.grad(v)
+    ) * r * ufl.dx + epsilon_r * lambda_ff * w * v * r * ufl.ds(13)
     L_lin = fem.Constant(V.mesh, ScalarType(0.0)) * v * ufl.dx
-    
+
     u.x.array[:] = 0.0
     uh = fem.Function(V)
-    
+
     # 電圧を少しずつ上げて解くことで安定性を確保
     voltages_warmup = np.linspace(0.0, V_tip, 5)[1:]
     for v_val in voltages_warmup:
@@ -432,7 +494,9 @@ def _warm_start_with_linear_solve(V, u, epsilon_r, V_tip, V_c, bc_ground, dofs_t
         bc_tip = fem.dirichletbc(ScalarType(v_val / V_c), dofs_tip, V)
         bcs = [bc_ground, bc_tip]
         # problem = LinearProblem(a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
-        problem = LinearProblem(a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "gmres", "pc_type": "ilu"}) # optimize for GPU
+        problem = LinearProblem(
+            a_lin, L_lin, bcs=bcs, petsc_options={"ksp_type": "gmres", "pc_type": "ilu"}
+        )  # optimize for GPU
         uh = problem.solve()
         u.x.array[:] = uh.x.array
         if comm.rank == 0:
@@ -447,15 +511,11 @@ def solve_with_homotopy(F, J, u, bcs, homotopy_charge, homotopy_sigma):
     """
     # Stage 1: 空間電荷の導入
     homotopy_sigma.value = 0.0
-    _solve_homotopy_stage(
-        F, J, u, bcs, homotopy_charge, stage_name="Space Charge"
-    )
+    _solve_homotopy_stage(F, J, u, bcs, homotopy_charge, stage_name="Space Charge")
 
     # Stage 2: 界面電荷の導入
     homotopy_charge.value = 1.0
-    _solve_homotopy_stage(
-        F, J, u, bcs, homotopy_sigma, stage_name="Interface Charge"
-    )
+    _solve_homotopy_stage(F, J, u, bcs, homotopy_sigma, stage_name="Interface Charge")
 
 
 def _solve_homotopy_stage(F, J, u, bcs, homotopy_param, stage_name: str):
@@ -479,25 +539,27 @@ def _solve_homotopy_stage(F, J, u, bcs, homotopy_param, stage_name: str):
 
     ksp = solver.krylov_solver
     # ksp.setType("preonly")
-    ksp.setType("gmres") # optimize for GPU
+    ksp.setType("gmres")  # optimize for GPU
     pc = ksp.getPC()
     # pc.setType("lu")
-    pc.setType("ilu") # optimize for GPU
+    pc.setType("ilu")  # optimize for GPU
 
     while theta < 1.0 - 1e-12:
         trial = min(1.0, theta + step)
         homotopy_param.value = ScalarType(trial)
-        
+
         try:
             n, converged = solver.solve(u)
         except RuntimeError:
             converged = False
-        
+
         if converged:
             theta = trial
             uh.x.array[:] = u.x.array  # 収束した解をバックアップ
             if comm.rank == 0:
-                logger.info(f"  [{stage_name} Homotopy: θ={theta:.3f}] Converged in {n} Newton iterations.")
+                logger.info(
+                    f"  [{stage_name} Homotopy: θ={theta:.3f}] Converged in {n} Newton iterations."
+                )
             # 収束が速ければステップサイズを増やす
             if n <= 3 and step < 0.5:
                 step *= 1.5
@@ -509,7 +571,10 @@ def _solve_homotopy_stage(F, J, u, bcs, homotopy_param, stage_name: str):
                     f"  [{stage_name} Homotopy: θ→{trial:.3f}] Failed to converge. Reducing step to {step:.4f}."
                 )
             if step < min_step:
-                raise RuntimeError(f"Homotopy stage '{stage_name}' failed: step size became too small.")
+                raise RuntimeError(
+                    f"Homotopy stage '{stage_name}' failed: step size became too small."
+                )
+
 
 def save_results(msh, u, epsilon_r, V_c, out_dir: str):
     """計算結果をファイルに保存する"""
@@ -529,10 +594,11 @@ def save_results(msh, u, epsilon_r, V_c, out_dir: str):
     adios4dolfinx.write_function(potential_path, u_dim, name="potential")
     epsilon_path = os.path.join(out_dir, "epsilon_r.bp")
     adios4dolfinx.write_function(epsilon_path, epsilon_r, name="epsilon_r")
-    
+
     if comm.rank == 0:
         logger.info(f"Solution saved to {xdmf_path}")
         logger.info(f"Data for analysis saved to {out_dir}/*.bp")
+
 
 def check_vector_device(vector, vector_name: str):
     """
@@ -540,39 +606,67 @@ def check_vector_device(vector, vector_name: str):
     """
     # dolfinx FunctionからPETSc Vecオブジェクトを取得
     petsc_vec = vector.x.petsc_vec
-    
+
     # PETSc Vecの現在のタイプを取得
     vec_type = petsc_vec.getType()
-    
+
     # ランク0のプロセスでのみメッセージを出力
     if vector.function_space.mesh.comm.rank == 0:
         if "cuda" in vec_type:
-            logger.info(f"✅ DEBUG: Vector '{vector_name}' is on the GPU (type: {vec_type})")
+            logger.info(
+                f"✅ DEBUG: Vector '{vector_name}' is on the GPU (type: {vec_type})"
+            )
         else:
-            logger.warning(f"⚠️ DEBUG: Vector '{vector_name}' is on the CPU (type: {vec_type})")
+            logger.warning(
+                f"⚠️ DEBUG: Vector '{vector_name}' is on the CPU (type: {vec_type})"
+            )
+
 
 def main():
     """メイン実行関数"""
-    parser = argparse.ArgumentParser(description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System.")
-    parser.add_argument("--V_tip", type=float, default=2.0, help="Tip voltage in Volts.")
-    parser.add_argument("--tip_radius", type=float, default=45.0, help="Tip radius in nm.")
-    parser.add_argument("--tip_height", type=float, default=8.0, help="Tip-sample distance in nm.")
-    parser.add_argument("--l_sio2", type=float, default=5.0, help="Thickness of SiO2 layer in nm.")
-    parser.add_argument("--Nd", type=float, default=1e16, help="Donor concentration in cm^-3.")
-    parser.add_argument("--sigma_s", type=float, default=1e11, help="Surface charge density at SiC/SiO2 interface in cm^-2.")
+    parser = argparse.ArgumentParser(
+        description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System."
+    )
+    parser.add_argument(
+        "--V_tip", type=float, default=2.0, help="Tip voltage in Volts."
+    )
+    parser.add_argument(
+        "--tip_radius", type=float, default=45.0, help="Tip radius in nm."
+    )
+    parser.add_argument(
+        "--tip_height", type=float, default=8.0, help="Tip-sample distance in nm."
+    )
+    parser.add_argument(
+        "--l_sio2", type=float, default=5.0, help="Thickness of SiO2 layer in nm."
+    )
+    parser.add_argument(
+        "--Nd", type=float, default=1e16, help="Donor concentration in cm^-3."
+    )
+    parser.add_argument(
+        "--sigma_s",
+        type=float,
+        default=1e11,
+        help="Surface charge density at SiC/SiO2 interface in cm^-2.",
+    )
     parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
-    parser.add_argument("--out_dir", type=str, default="out", help="Output directory for results.")
-    parser.add_argument("--plot_fermi", action="store_true", help="Plot the Fermi level determination process.")
+    parser.add_argument(
+        "--out_dir", type=str, default="out", help="Output directory for results."
+    )
+    parser.add_argument(
+        "--plot_fermi",
+        action="store_true",
+        help="Plot the Fermi level determination process.",
+    )
     args, _ = parser.parse_known_args()
-    
+
     if comm.rank == 0:
         os.makedirs(args.out_dir, exist_ok=True)
-    
+
     # 物理パラメータの初期化 (単位をm^-3, m^-2に変換)
     phys_params = PhysicalParameters(
         T=args.T,
-        Nd=args.Nd * 1e6, # cm^-3 -> m^-3
-        sigma_s=args.sigma_s * 1e4, # cm^-2 -> m^-2
+        Nd=args.Nd * 1e6,  # cm^-3 -> m^-3
+        sigma_s=args.sigma_s * 1e4,  # cm^-2 -> m^-2
     )
 
     # フェルミ準位の計算
@@ -581,9 +675,7 @@ def main():
 
     # ジオメトリパラメータの初期化
     geom_params = GeometricParameters(
-        l_sio2=args.l_sio2,
-        tip_radius=args.tip_radius,
-        tip_height=args.tip_height
+        l_sio2=args.l_sio2, tip_radius=args.tip_radius, tip_height=args.tip_height
     )
 
     # パラメータをJSONファイルに保存
@@ -599,10 +691,7 @@ def main():
 
     # FEMシミュレーションの実行
     run_fem_simulation(
-        phys=phys_params,
-        geom=geom_params,
-        V_tip=args.V_tip,
-        out_dir=args.out_dir
+        phys=phys_params, geom=geom_params, V_tip=args.V_tip, out_dir=args.out_dir
     )
 
 
