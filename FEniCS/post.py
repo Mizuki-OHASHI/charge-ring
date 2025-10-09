@@ -107,24 +107,35 @@ def main():
 
     # Vertical Profile (along center axis r=0)
     num_points = 500
-    z_coords_profile = np.linspace(z_min, z_max, num_points)
+    # Use geometry parameters to get the correct range
+    z_min_profile = -geom_params.l_sio2 - (geom_params.l_vac - geom_params.l_sio2)
+    z_max_profile = geom_params.l_vac
+    z_coords_profile = np.linspace(z_min_profile, z_max_profile, num_points)
 
     # Convert z coordinates from nm to dimensionless (inverse of L_c * 1e9)
-    z_min = -geom_params.l_sio2 - (geom_params.l_vac - geom_params.l_sio2)
-    z_max = geom_params.l_vac
-    z_coords = np.linspace(z_min, z_max, num_points)
+    points_z = np.array([[0.0, z / (L_c * 1e9), 0.0] for z in z_coords_profile])
 
     potential_z = []
     valid_z = []
 
     # Use u.eval to evaluate potential at specific points
+    from dolfinx import geometry
+
+    bb_tree = geometry.bb_tree(msh, msh.topology.dim)
+
     for i, z in enumerate(z_coords_profile):
         try:
-            # Find cell containing the point
             point = points_z[i : i + 1]
-            # Try to evaluate - will raise exception if point is outside mesh
-            val = u.eval(point, np.array([0], dtype=np.int32))
-            if len(val) > 0:
+            # Find cells that might contain the point
+            cell_candidates = geometry.compute_collisions_points(bb_tree, point)
+            # Find which cell actually contains the point
+            colliding_cells = geometry.compute_colliding_cells(
+                msh, cell_candidates, point
+            )
+
+            if len(colliding_cells.links(0)) > 0:
+                cell_id = colliding_cells.links(0)[0]
+                val = u.eval(point, np.array([cell_id], dtype=np.int32))
                 potential_z.append(val[0])
                 valid_z.append(z)
         except Exception:
@@ -132,9 +143,10 @@ def main():
             continue
 
     # Horizontal Profile (at SiO2/SiC interface z = -l_sio2)
-    sio2_z_nm = params["geometric"]["l_sio2"]
+    sio2_z_nm = params["geometric"]["l_sio2"] * 1e9  # Convert from m to nm
     z_level = -sio2_z_nm
-    r_coords_profile = np.linspace(0, r_max, num_points)
+    r_max_profile = geom_params.region_radius  # Use geometry parameter for range
+    r_coords_profile = np.linspace(0, r_max_profile, num_points)
 
     # Convert coordinates from nm to dimensionless
     points_r = np.array(
@@ -147,8 +159,16 @@ def main():
     for i, r in enumerate(r_coords_profile):
         try:
             point = points_r[i : i + 1]
-            val = u.eval(point, np.array([0], dtype=np.int32))
-            if len(val) > 0:
+            # Find cells that might contain the point
+            cell_candidates = geometry.compute_collisions_points(bb_tree, point)
+            # Find which cell actually contains the point
+            colliding_cells = geometry.compute_colliding_cells(
+                msh, cell_candidates, point
+            )
+
+            if len(colliding_cells.links(0)) > 0:
+                cell_id = colliding_cells.links(0)[0]
+                val = u.eval(point, np.array([cell_id], dtype=np.int32))
                 potential_r.append(val[0])
                 valid_r.append(r)
         except Exception:
