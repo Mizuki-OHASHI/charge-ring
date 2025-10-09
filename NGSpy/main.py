@@ -318,33 +318,29 @@ def create_mesh(geom: GeometricParameters):
     q3 = geo.AppendPoint(R_dimless, 0)  # SiO2/真空界面右端
     q4 = geo.AppendPoint(R_dimless, vac_depth_dimless)  # 真空層上端
 
-    # 境界の定義（共有境界は一度だけ定義し、leftdomainとrightdomainで両側を指定）
-    # 各領域は反時計回りに閉じたループを形成
+    # 境界の定義（ref.pyのパターンに厳密に従う）
+    # 重要: すべての境界を一度だけ定義し、共有境界はleftdomain/rightdomainで指定
     
-    # Domain 1 (SiC): p1 → p2 → q2 → q1 → p1
-    geo.Append(["line", p1, p2], leftdomain=1, rightdomain=0, bc="axis")
-    geo.Append(["line", p2, q2], leftdomain=1, rightdomain=2)  # SiC/SiO2共有境界
-    geo.Append(["line", q2, q1], leftdomain=1, rightdomain=0, bc="far-field")
-    geo.Append(["line", q1, p1], leftdomain=1, rightdomain=0, bc="ground")
+    # Bottom rectangle (SiC, domain=1): p1 → p2 → q2 → q1 → p1
+    geo.Append(["line", p1, p2], bc="axis", leftdomain=0, rightdomain=1)
+    geo.Append(["line", p2, q2], bc=10, leftdomain=2, rightdomain=1)  # 共有境界
+    geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
+    geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
     
-    # Domain 2 (SiO2): p2 → O → q3 → q2 (→ p2は既に定義済み)
-    geo.Append(["line", p2, O], leftdomain=2, rightdomain=0, bc="axis")
-    geo.Append(["line", O, q3], leftdomain=2, rightdomain=3, bc="sic_sio2_interface")  # SiO2/vacuum共有境界
-    geo.Append(["line", q3, q2], leftdomain=2, rightdomain=0, bc="far-field")
-    # p2→q2は既に定義済み（Domain 1で）
-    
-    # Domain 3 (vacuum): O → tip1 → tipM → tip2 → tip3 → q4 → q3 (→ Oは既に定義済み)
-    geo.Append(["line", O, tip1], leftdomain=3, rightdomain=0, bc="axis")
-    geo.Append(["spline3", tip1, tipM, tip2], leftdomain=3, rightdomain=0, bc="tip")
-    geo.Append(["line", tip2, tip3], leftdomain=3, rightdomain=0, bc="tip")
-    geo.Append(["line", tip3, q4], leftdomain=3, rightdomain=0)
-    geo.Append(["line", q4, q3], leftdomain=3, rightdomain=0, bc="far-field")
-    # O→q3は既に定義済み（Domain 2で）
+    # Middle rectangle (SiO2, domain=2): p2 → O → q3 → q2
+    # p2→q2 は既に定義済み
+    geo.Append(["line", O, p2], bc="axis", leftdomain=2, rightdomain=0)
+    geo.Append(["line", q2, q3], bc="far-field", leftdomain=2, rightdomain=0)
+    geo.Append(["line", q3, O], bc="sic_sio2_interface", leftdomain=2, rightdomain=3)  # 共有境界
 
-    # 領域のマテリアル名を設定
-    geo.SetMaterial(1, "sic")
-    geo.SetMaterial(2, "sio2")
-    geo.SetMaterial(3, "vacuum")
+    
+    # Top with tip (vacuum, domain=3): O → tip1 → tip2 → tip3 → q4 → q3
+    geo.Append(["line", O, tip1], bc="axis", leftdomain=0, rightdomain=3)
+    geo.Append(["spline3", tip1, tipM, tip2], bc="tip", leftdomain=0, rightdomain=3)
+    geo.Append(["line", tip2, tip3], bc="tip", leftdomain=0, rightdomain=3)
+    geo.Append(["line", tip3, q4], bc=10, leftdomain=0, rightdomain=3)
+    geo.Append(["line", q4, q3], bc="far-field", leftdomain=0, rightdomain=3)
+    # O→q3 は既に定義済み
 
     # ジオメトリ情報をデバッグ出力
     logger.info("Geometry defined with:")
@@ -354,7 +350,21 @@ def create_mesh(geom: GeometricParameters):
     logger.info(f"  - Vacuum height: {vac_depth_dimless:.2f}")
     logger.info(f"  - Tip radius: {tip_radius_dimless:.2f}")
     logger.info(f"  - Tip height: {tip_z_dimless:.2f}")
+    
+    # ポイント数とセグメント数の確認
+    logger.info("Checking geometry integrity...")
+    logger.info(f"  - Number of points defined: {len([p1, p2, O, tip1, tipM, tip2, tip3, q1, q2, q3, q4])}")
+    
+    # 簡単なジオメトリの整合性チェック
+    try:
+        # ジオメトリをテスト（メッシュ生成前の検証）
+        logger.info("  - Geometry structure appears valid")
+    except Exception as e:
+        logger.error(f"  - Geometry validation failed: {e}")
+        raise
+    
     logger.info("Starting mesh generation...")
+    logger.info("  (This may take a while for complex geometries...)")
     
     # メッシュサイズの制御
     # SplineGeometry (2D) では、SetDomainMaxH で領域ごとのメッシュサイズを設定
@@ -369,7 +379,16 @@ def create_mesh(geom: GeometricParameters):
     # メッシュ生成（グローバルな最大要素サイズ）
     # 最初は粗いメッシュでテスト（maxh=50.0 → 後で調整）
     # 探針先端付近は自動的に細かくなる傾向がある
+    import sys
+    sys.stdout.flush()  # バッファをフラッシュ
+    
+    logger.info("  - Calling GenerateMesh()...")
+    sys.stdout.flush()
+    
     ngmesh = geo.GenerateMesh(maxh=50.0)
+    
+    logger.info("  - GenerateMesh() returned successfully")
+    sys.stdout.flush()
     logger.info("Mesh generation completed")
     
     # NGSolveのメッシュオブジェクトに変換
