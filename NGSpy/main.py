@@ -36,6 +36,8 @@ class PhysicalParameters:
     eps_vac: float = 1.0
 
     # Physical quantities derived from calculations
+    n0: float = 0.0
+    p0: float = 0.0
     Nc: float = 0.0
     Nv: float = 0.0
     Ec: float = 0.0
@@ -48,6 +50,8 @@ class PhysicalParameters:
     def __post_init__(self):
         """Initialize and compute physical constants"""
         self.kTeV = const.k * self.T / const.e
+        self.n0 = (self.Nd + np.sqrt(self.Nd**2 + 4 * self.ni**2)) / 2
+        self.p0 = self.ni**2 / self.n0
         self.Nc = 2 * (2 * np.pi * self.m_de * const.k * self.T / (const.h**2)) ** 1.5
         self.Nv = 2 * (2 * np.pi * self.m_dh * const.k * self.T / (const.h**2)) ** 1.5
         self.Ev = 0
@@ -273,6 +277,7 @@ def run_fem_simulation(
     phys: PhysicalParameters,
     geom: GeometricParameters,
     V_tip: float,
+    Feenstra: bool,
     out_dir: str,
 ):
     """Run the FEM simulation using NGSolve"""
@@ -294,7 +299,16 @@ def run_fem_simulation(
 
     # Define weak form
     a = _setup_weak_form(
-        fes, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh
+        fes,
+        epsilon_r,
+        phys,
+        V_c,
+        L_c,
+        homotopy_charge,
+        homotopy_sigma,
+        geom,
+        msh,
+        Feenstra,
     )
 
     # Set boundary conditions
@@ -307,11 +321,11 @@ def run_fem_simulation(
     # Solve nonlinear problem with homotopy method
     solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma)
 
-    save_results(msh, u, epsilon_r, V_c, out_dir)
+    save_results(msh, u, epsilon_r, V_c, Feenstra, out_dir)
 
 
 def _setup_weak_form(
-    fes, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh
+    fes, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh, Feenstra
 ):
     """Define the weak form of the Poisson equation with nonlinear charge density"""
 
@@ -340,6 +354,7 @@ def _setup_weak_form(
                 "Ed_dimless": Ed_dimless,
                 "lambda_ff": lambda_ff,
                 "sigma_s_target": sigma_s_target,
+                "Feenstra": Feenstra,
             },
             indent=2,
         )
@@ -366,9 +381,14 @@ def _setup_weak_form(
     u_clip = clamp(uh, clip_potential)
 
     # Nonlinear charge density terms (at SiC region)
-    n_term = C0 * phys.Nc * fermi_dirac_half((Ef_dimless - Ec_dimless) + u_clip)
-    p_term = C0 * phys.Nv * fermi_dirac_half((Ev_dimless - Ef_dimless) - u_clip)
-    Ndp_term = C0 * phys.Nd / (1 + 2 * safe_exp((Ef_dimless - Ed_dimless) + u_clip))
+    if Feenstra:
+        n_term = C0 * phys.Nc * fermi_dirac_half((Ef_dimless - Ec_dimless) + u_clip)
+        p_term = C0 * phys.Nv * fermi_dirac_half((Ev_dimless - Ef_dimless) - u_clip)
+        Ndp_term = C0 * phys.Nd / (1 + 2 * safe_exp((Ef_dimless - Ed_dimless) + u_clip))
+    else:  # Boltzmann approximation
+        n_term = C0 * phys.n0 * safe_exp(u_clip)
+        p_term = C0 * phys.p0 * safe_exp(-u_clip)
+        Ndp_term = C0 * phys.Nd
     rho_dimless = homotopy_charge * (p_term + Ndp_term - n_term)
 
     sigma_s_dimless = homotopy_sigma * sigma_s_target
@@ -504,7 +524,7 @@ def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
                 )
 
 
-def save_results(msh, u, epsilon_r, V_c, out_dir: str):
+def save_results(msh, u, epsilon_r, V_c, Feenstra: bool, out_dir: str):
     """Save simulation results to disk
 
     Saved files:
@@ -540,6 +560,7 @@ def save_results(msh, u, epsilon_r, V_c, out_dir: str):
     # Save metadata
     meta = {
         "V_c": V_c,
+        "Feenstra": Feenstra,
         "ndof": u.space.ndof,
         "fes": "H1",
         "order": u.space.globalorder,
@@ -645,6 +666,13 @@ def main():
         action="store_true",
         help="Plot the Fermi level determination process.",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=["Feenstra", "Boltzmann", "F", "B"],
+        default="Feenstra",
+        help="Choose the carrier statistics model.",
+    )
     args, _ = parser.parse_known_args()
 
     # Create output directory
@@ -699,7 +727,11 @@ def main():
 
     # Run FEM simulation
     run_fem_simulation(
-        phys=phys_params, geom=geom_params, V_tip=args.V_tip, out_dir=args.out_dir
+        phys=phys_params,
+        geom=geom_params,
+        V_tip=args.V_tip,
+        out_dir=args.out_dir,
+        Feenstra=(args.model[0].upper() == "F"),
     )
 
     end = datetime.now()
