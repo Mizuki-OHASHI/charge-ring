@@ -449,8 +449,8 @@ def _setup_weak_form(
     # ポアソン方程式の弱形式
     a = ufl.inner(epsilon_r * ufl.grad(u), ufl.grad(v)) * r
     L_bulk = rho_dimless * v * r
-    L_surface = sigma_s_dimless * ufl.avg(v) * r
-    # L_surface = sigma_s_dimless * v("+") * r("+")
+    # L_surface = sigma_s_dimless * ufl.avg(v) * r
+    L_surface = sigma_s_dimless * v("+") * r("+")
     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
 
     F = (

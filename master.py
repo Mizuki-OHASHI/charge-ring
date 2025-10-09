@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 os.makedirs("figures", exist_ok=True)
 
-fx_out_dir = "_3+"
+fx_out_dir = "example_output"
 ng_out_dir = "example_output"
 fenics_data_vert = np.loadtxt(
     f"FEniCS/{fx_out_dir}/line_profile_vertical.txt", skiprows=1
