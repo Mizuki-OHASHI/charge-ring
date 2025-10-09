@@ -143,8 +143,7 @@ def main():
             continue
 
     # Horizontal Profile (at SiO2/SiC interface z = -l_sio2)
-    sio2_z_nm = params["geometric"]["l_sio2"] * 1e9  # Convert from m to nm
-    z_level = -sio2_z_nm
+    z_level = -geom_params.l_sio2  # Already in nm
     r_max_profile = geom_params.region_radius  # Use geometry parameter for range
     r_coords_profile = np.linspace(0, r_max_profile, num_points)
 

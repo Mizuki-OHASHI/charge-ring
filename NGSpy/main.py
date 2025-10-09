@@ -1,8 +1,10 @@
 import argparse
 import json
-import logging
 import os
+import sys
 from dataclasses import asdict, dataclass
+from datetime import datetime
+from logging import INFO, basicConfig, getLogger
 
 import matplotlib.pyplot as plt
 import ngsolve as ng
@@ -12,12 +14,7 @@ from netgen.geom2d import SplineGeometry
 from ngsolve.solvers import Newton
 from scipy.optimize import brentq
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 @dataclass
@@ -634,7 +631,7 @@ def main():
     parser.add_argument(
         "--sigma_s",
         type=float,
-        default=1e11,
+        default=1e12,
         help="Surface charge density at SiC/SiO2 interface in cm^-2.",
     )
     parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
@@ -650,6 +647,28 @@ def main():
 
     # Create output directory
     os.makedirs(args.out_dir, exist_ok=True)
+    basicConfig(
+        level=INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        filemode="w",
+        filename=os.path.join(args.out_dir, "main.log"),
+    )
+
+    # Also log errors to the file via the root logger's exception hook
+    def log_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logger.error(
+            "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback)
+        )
+
+    sys.excepthook = log_exception
+
+    print("Logging to", os.path.join(args.out_dir, "main.log"))
+    start = datetime.now()
+    logger.info(f"Started simulation at {start}")
 
     # Initialize physical parameters (convert units to m^-3, m^-2)
     phys_params = PhysicalParameters(
@@ -680,6 +699,9 @@ def main():
     run_fem_simulation(
         phys=phys_params, geom=geom_params, V_tip=args.V_tip, out_dir=args.out_dir
     )
+
+    end = datetime.now()
+    logger.info(f"Finished simulation at {end}, duration: {end - start}")
 
 
 if __name__ == "__main__":

@@ -29,7 +29,8 @@ def main():
     V_c = metadata["V_c"]
     V_tip = params["simulation"]["V_tip"]
     geom_params = GeometricParameters(**geom_params_input)
-    msh, u_dimless, u_volts_np = load_results(out_dir, geom_params, V_c)
+    L_c = geom_params.L_c  # [m]
+    msh, u_dimless, _ = load_results(out_dir, geom_params, V_c)
 
     # --- 2D Potential Plot ---
     print("Creating 2D potential plot...")
@@ -37,6 +38,8 @@ def main():
     # Get mesh vertex coordinates
     verts = np.array([v.point for v in msh.vertices])
     x, y = verts[:, 0], verts[:, 1]
+    r_coords = verts[:, 0] * L_c * 1e9  # r coordinate [nm]
+    z_coords = verts[:, 1] * L_c * 1e9  # z coordinate [nm]
 
     # Get triangle element vertex indices (for plotting)
     tris = []
@@ -46,6 +49,10 @@ def main():
 
     # Evaluate potential at vertices (in volts)
     potential_at_verts = np.array([u_dimless(msh(*v)) for v in verts]) * V_c
+
+    # Plotting range
+    r_max = np.max(r_coords)
+    z_min, z_max = np.min(z_coords), np.max(z_coords)
 
     # Plotting
     fig1, ax1 = plt.subplots(figsize=(8, 6))
@@ -72,6 +79,8 @@ def main():
     ax1.set_ylabel("z (nm)")
     ax1.set_title("2D Potential Distribution with Mesh")
     ax1.set_aspect("equal")
+    ax1.set_xlim(0, r_max)
+    ax1.set_ylim(z_min, z_max)
     fig1.tight_layout()
     fig1.savefig(os.path.join(out_dir, "potential_2d_plot.png"), dpi=300)
     print(f"Saved 2D plot to {os.path.join(out_dir, 'potential_2d_plot.png')}")
@@ -135,6 +144,18 @@ def main():
     fig2.savefig(os.path.join(out_dir, "potential_line_profiles.png"), dpi=150)
     print(
         f"Saved line profiles to {os.path.join(out_dir, 'potential_line_profiles.png')}"
+    )
+
+    # Save line profile data
+    np.savetxt(
+        os.path.join(out_dir, "line_profile_vertical.txt"),
+        np.column_stack((valid_z, potential_z)),
+        header="z_nm potential_V",
+    )
+    np.savetxt(
+        os.path.join(out_dir, "line_profile_horizontal.txt"),
+        np.column_stack((valid_r, potential_r)),
+        header="r_nm potential_V",
     )
 
 
