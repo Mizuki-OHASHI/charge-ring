@@ -640,16 +640,29 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
     # 電圧を少しずつ上げて解くことで安定性を確保
     voltages_warmup = np.linspace(0.0, V_tip, 5)[1:]
     for v_val in voltages_warmup:
-        # 境界条件を更新
-        u.Set(0, definedon=msh.Boundaries("ground"))
-        u.Set(v_val / V_c, definedon=msh.Boundaries("tip"))
+        # 境界条件を設定（初期化）
+        uh = ng.GridFunction(fes)
+        uh.Set(0, definedon=msh.Boundaries("ground"))
+        uh.Set(v_val / V_c, definedon=msh.Boundaries("tip"))
         
         # 双線形形式と線形形式を組み立て
         a_lin.Assemble()
         f_lin.Assemble()
         
+        # 右辺を境界条件で修正
+        r = f_lin.vec.CreateVector()
+        r.data = f_lin.vec - a_lin.mat * uh.vec
+        
+        # 自由度を取得（Dirichlet境界以外）
+        freedofs = fes.FreeDofs()
+        freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
+        freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
+        
         # Dirichlet境界条件を考慮して線形システムを解く
-        u.vec.data = a_lin.mat.Inverse(fes.FreeDofs(definedon=msh.Boundaries("ground|tip")), inverse="sparsecholesky") * f_lin.vec
+        uh.vec.data += a_lin.mat.Inverse(freedofs, inverse="sparsecholesky") * r
+        
+        # 結果をuにコピー
+        u.vec.data = uh.vec
         
         logger.info(f"  [Linear Warm-up] Solved at V_tip = {v_val:.2f} V")
 
@@ -795,7 +808,9 @@ def _solve_homotopy_stage(a, f, u, fes, msh, homotopy_param, stage_name: str):
                 
                 # ヤコビアン行列で線形システムを解く
                 # A * du = -res
-                freedofs = fes.FreeDofs(msh.Boundaries("ground|tip"))
+                freedofs = fes.FreeDofs()
+                freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
+                freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
                 du.data = a.mat.Inverse(freedofs, inverse="sparsecholesky") * (-res)
                 
                 # 緩和付き更新
