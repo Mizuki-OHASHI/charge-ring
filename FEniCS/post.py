@@ -85,9 +85,10 @@ def main():
     )
 
     # Draw interface lines
-    sio2_z_nm = params["geometric"]["l_sio2"] * 1e9
     ax1.axhline(y=0, color="w", linestyle="-", linewidth=0.5, alpha=0.25)
-    ax1.axhline(y=-sio2_z_nm, color="w", linestyle="-", linewidth=0.5, alpha=0.25)
+    ax1.axhline(
+        y=-geom_params.l_sio2, color="w", linestyle="-", linewidth=0.5, alpha=0.25
+    )
 
     ax1.set_xlabel("r (nm)")
     ax1.set_ylabel("z (nm)")

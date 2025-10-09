@@ -89,7 +89,7 @@ def main():
     print("Creating line profile plot...")
 
     # Vertical Profile (along center axis r=0)
-    num_points = 500
+    num_points = 200
     # Get geometry range
     z_min = -geom_params.l_sio2 - (geom_params.l_vac - geom_params.l_sio2)
     z_max = geom_params.l_vac

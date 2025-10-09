@@ -1,33 +1,44 @@
-$ python main.py --out_dir example_output
-2025-10-09 01:02:28 [INFO] Calculated Fermi Level: Ef = 3.0891 eV
-2025-10-09 01:02:28 [INFO] Starting mesh generation with Gmsh...
-2025-10-09 01:02:28 [INFO] Mesh generation completed.
-2025-10-09 01:02:28 [INFO] Performing warm-start with linear Poisson equation...
-2025-10-09 01:02:29 [INFO]   [Linear Warm-up] Solved at V_tip = 0.50 V
-2025-10-09 01:02:29 [INFO]   [Linear Warm-up] Solved at V_tip = 1.00 V
-2025-10-09 01:02:29 [INFO]   [Linear Warm-up] Solved at V_tip = 1.50 V
-2025-10-09 01:02:29 [INFO]   [Linear Warm-up] Solved at V_tip = 2.00 V
-2025-10-09 01:02:29 [INFO] --- Starting Homotopy Stage: Space Charge ---
-2025-10-09 01:02:30 [INFO]   [Space Charge Homotopy: θ=0.100] Converged in 20 Newton iterations.
-2025-10-09 01:02:31 [INFO]   [Space Charge Homotopy: θ=0.200] Converged in 18 Newton iterations.
-2025-10-09 01:02:33 [INFO]   [Space Charge Homotopy: θ=0.300] Converged in 18 Newton iterations.
-2025-10-09 01:02:34 [INFO]   [Space Charge Homotopy: θ=0.400] Converged in 18 Newton iterations.
-2025-10-09 01:02:35 [INFO]   [Space Charge Homotopy: θ=0.500] Converged in 18 Newton iterations.
-2025-10-09 01:02:36 [INFO]   [Space Charge Homotopy: θ=0.600] Converged in 18 Newton iterations.
-2025-10-09 01:02:38 [INFO]   [Space Charge Homotopy: θ=0.700] Converged in 18 Newton iterations.
-2025-10-09 01:02:39 [INFO]   [Space Charge Homotopy: θ=0.800] Converged in 18 Newton iterations.
-2025-10-09 01:02:40 [INFO]   [Space Charge Homotopy: θ=0.900] Converged in 18 Newton iterations.
-2025-10-09 01:02:42 [INFO]   [Space Charge Homotopy: θ=1.000] Converged in 18 Newton iterations.
-2025-10-09 01:02:42 [INFO] --- Starting Homotopy Stage: Interface Charge ---
-2025-10-09 01:02:43 [INFO]   [Interface Charge Homotopy: θ=0.100] Converged in 19 Newton iterations.
-2025-10-09 01:02:46 [INFO]   [Interface Charge Homotopy: θ=0.200] Converged in 19 Newton iterations.
-2025-10-09 01:02:47 [INFO]   [Interface Charge Homotopy: θ=0.300] Converged in 19 Newton iterations.
-2025-10-09 01:02:49 [INFO]   [Interface Charge Homotopy: θ=0.400] Converged in 19 Newton iterations.
-2025-10-09 01:02:50 [INFO]   [Interface Charge Homotopy: θ=0.500] Converged in 19 Newton iterations.
-2025-10-09 01:02:51 [INFO]   [Interface Charge Homotopy: θ=0.600] Converged in 19 Newton iterations.
-2025-10-09 01:02:53 [INFO]   [Interface Charge Homotopy: θ=0.700] Converged in 19 Newton iterations.
-2025-10-09 01:02:54 [INFO]   [Interface Charge Homotopy: θ=0.800] Converged in 19 Newton iterations.
-2025-10-09 01:02:55 [INFO]   [Interface Charge Homotopy: θ=0.900] Converged in 19 Newton iterations.
-2025-10-09 01:02:57 [INFO]   [Interface Charge Homotopy: θ=1.000] Converged in 19 Newton iterations.
-2025-10-09 01:02:57 [INFO] Solution saved to example_output/solution.xdmf
-2025-10-09 01:02:57 [INFO] Data for analysis saved to example_output/*.bp
+2025-10-09 19:26:05 [INFO] Started simulation at 2025-10-09 19:26:05.591620
+2025-10-09 19:26:05 [INFO] Calculated Fermi Level: Ef = 3.0891 eV
+2025-10-09 19:26:05 [INFO] Starting mesh generation with Gmsh...
+2025-10-09 19:26:05 [INFO] Mesh generation completed.
+2025-10-09 19:26:05 [INFO] {
+  "L_c": 1e-09,
+  "V_c": 0.025851999786435535,
+  "C0": 6.999508091037586e-25,
+  "Ef_dimless": 119.49231849584909,
+  "Ec_dimless": 126.10243025417755,
+  "Ev_dimless": 0.0,
+  "Ed_dimless": 122.62107481771253,
+  "sigma_s_target": 6.999508091037585
+}
+2025-10-09 19:26:05 [INFO] Performing warm-start with linear Poisson equation...
+2025-10-09 19:26:05 [INFO]   [Linear Warm-up] Solved at V_tip = 0.50 V
+2025-10-09 19:26:05 [INFO]   [Linear Warm-up] Solved at V_tip = 1.00 V
+2025-10-09 19:26:05 [INFO]   [Linear Warm-up] Solved at V_tip = 1.50 V
+2025-10-09 19:26:06 [INFO]   [Linear Warm-up] Solved at V_tip = 2.00 V
+2025-10-09 19:26:06 [INFO] --- Starting Homotopy Stage: Space Charge ---
+2025-10-09 19:26:07 [INFO]   [Space Charge Homotopy: θ=0.100] Converged in 20 Newton iterations.
+2025-10-09 19:26:09 [INFO]   [Space Charge Homotopy: θ=0.200] Converged in 18 Newton iterations.
+2025-10-09 19:26:11 [INFO]   [Space Charge Homotopy: θ=0.300] Converged in 18 Newton iterations.
+2025-10-09 19:26:13 [INFO]   [Space Charge Homotopy: θ=0.400] Converged in 18 Newton iterations.
+2025-10-09 19:26:15 [INFO]   [Space Charge Homotopy: θ=0.500] Converged in 18 Newton iterations.
+2025-10-09 19:26:17 [INFO]   [Space Charge Homotopy: θ=0.600] Converged in 18 Newton iterations.
+2025-10-09 19:26:18 [INFO]   [Space Charge Homotopy: θ=0.700] Converged in 18 Newton iterations.
+2025-10-09 19:26:19 [INFO]   [Space Charge Homotopy: θ=0.800] Converged in 18 Newton iterations.
+2025-10-09 19:26:20 [INFO]   [Space Charge Homotopy: θ=0.900] Converged in 18 Newton iterations.
+2025-10-09 19:26:22 [INFO]   [Space Charge Homotopy: θ=1.000] Converged in 18 Newton iterations.
+2025-10-09 19:26:22 [INFO] --- Starting Homotopy Stage: Interface Charge ---
+2025-10-09 19:26:23 [INFO]   [Interface Charge Homotopy: θ=0.100] Converged in 19 Newton iterations.
+2025-10-09 19:26:25 [INFO]   [Interface Charge Homotopy: θ=0.200] Converged in 19 Newton iterations.
+2025-10-09 19:26:27 [INFO]   [Interface Charge Homotopy: θ=0.300] Converged in 20 Newton iterations.
+2025-10-09 19:26:29 [INFO]   [Interface Charge Homotopy: θ=0.400] Converged in 20 Newton iterations.
+2025-10-09 19:26:30 [INFO]   [Interface Charge Homotopy: θ=0.500] Converged in 20 Newton iterations.
+2025-10-09 19:26:31 [INFO]   [Interface Charge Homotopy: θ=0.600] Converged in 20 Newton iterations.
+2025-10-09 19:26:33 [INFO]   [Interface Charge Homotopy: θ=0.700] Converged in 21 Newton iterations.
+2025-10-09 19:26:34 [INFO]   [Interface Charge Homotopy: θ=0.800] Converged in 21 Newton iterations.
+2025-10-09 19:26:35 [INFO]   [Interface Charge Homotopy: θ=0.900] Converged in 21 Newton iterations.
+2025-10-09 19:26:37 [INFO]   [Interface Charge Homotopy: θ=1.000] Converged in 21 Newton iterations.
+2025-10-09 19:26:37 [INFO] Solution saved to example_output/solution.xdmf
+2025-10-09 19:26:37 [INFO] Data for analysis saved to example_output/*.bp
+2025-10-09 19:26:37 [INFO] Finished simulation at 2025-10-09 19:26:37.146898, duration: 0:00:31.555278

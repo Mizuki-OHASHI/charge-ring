@@ -199,26 +199,28 @@ def create_mesh(geom: GeometricParameters):
     # Important: Define all boundaries once, and specify shared boundaries with leftdomain/rightdomain
 
     # Bottom rectangle (SiC, domain=1): p1 → p2 → q2 → q1 → p1
-    geo.Append(["line", p1, p2], bc="axis", leftdomain=0, rightdomain=1)
-    geo.Append(["line", p2, q2], bc="sic/sio2", leftdomain=2, rightdomain=1)
+    geo.Append(["line", p1, p2], bc="axis", leftdomain=0, rightdomain=1, maxh=5)
+    geo.Append(["line", p2, q2], bc="sic/sio2", leftdomain=2, rightdomain=1, maxh=1)
     geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
     geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
 
     # Middle rectangle (SiO2, domain=2): p2 → origin → q3 → q2
     # p2→q2 is already defined
-    geo.Append(["line", origin, p2], bc="axis", leftdomain=2, rightdomain=0)
+    geo.Append(["line", origin, p2], bc="axis", leftdomain=2, rightdomain=0, maxh=0.5)
     geo.Append(["line", q2, q3], bc="far-field", leftdomain=2, rightdomain=0)
     geo.Append(["line", q3, origin], bc="sio2/vacuum", leftdomain=2, rightdomain=3)
 
     # Top with tip (vacuum, domain=3): origin → tip1 → tip2 → tip3 → q4 → q3
-    geo.Append(["line", origin, tip1], bc="axis", leftdomain=0, rightdomain=3)
+    geo.Append(["line", origin, tip1], bc="axis", leftdomain=0, rightdomain=3, maxh=0.5)
     for i in range(0, len(tipMlst), 2):
         points = [
             tip1 if i == 0 else tipMlst[i - 1],
             tipMlst[i],
             tip2 if i == len(tipMlst) - 1 else tipMlst[i + 1],
         ]
-        geo.Append(["spline3", *points], bc="tip", leftdomain=0, rightdomain=3)
+        geo.Append(
+            ["spline3", *points], bc="tip", leftdomain=0, rightdomain=3, maxh=0.5
+        )
     geo.Append(["line", tip2, tip3], bc="tip", leftdomain=0, rightdomain=3)
     geo.Append(["line", tip3, q4], bc="top", leftdomain=0, rightdomain=3)
     geo.Append(["line", q4, q3], bc="far-field", leftdomain=0, rightdomain=3)
@@ -251,12 +253,12 @@ def create_mesh(geom: GeometricParameters):
 
     # Set mesh size for each domain
     # geo.SetDomainMaxH(1, 5.0)  # SiC
-    geo.SetDomainMaxH(2, 2.5)  # SiO2
+    geo.SetDomainMaxH(2, 2)  # SiO2
     # geo.SetDomainMaxH(3, 1.0)  # Vacuum
 
     # Mesh generation (global maximum element size)
     # The area around the tip tends to become finer automatically
-    ngmesh = geo.GenerateMesh(maxh=5)
+    ngmesh = geo.GenerateMesh(maxh=10, grading=0.2)
     logger.info("Mesh generation completed")
 
     # Convert to NGSolve mesh object
@@ -392,7 +394,7 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
     r = ng.x
 
     # Far-field Robin boundary condition parameter
-    lambda_ff = 1 / (geom.region_radius * 1e-9 / 1e-9)
+    lambda_ff = 1 / geom.region_radius
 
     # Set up bilinear and linear forms
     a_lin = ng.BilinearForm(fes)
@@ -468,7 +470,7 @@ def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
     newton_kwargs = dict(
         freedofs=freedofs,
         maxit=100,
-        maxerr=1e-10,
+        maxerr=1e-11,
         inverse="sparsecholesky",
         dampfactor=0.7,
         printing=False,

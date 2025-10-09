@@ -2,7 +2,9 @@ import argparse
 import json
 import logging
 import os
+import sys
 from dataclasses import asdict, dataclass
+from datetime import datetime
 
 import adios4dolfinx
 import gmsh
@@ -22,12 +24,6 @@ from scipy.optimize import brentq
 
 # MPIのランク0でのみログを出力するための設定
 comm = MPI.COMM_WORLD
-if comm.rank == 0:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 logger = logging.getLogger(__name__)
 
 
@@ -296,7 +292,7 @@ def create_mesh(geom: GeometricParameters):
     gmsh.model.addPhysicalGroup(1, [p1p2, Op2, tip1], 12, "axis")
     gmsh.model.addPhysicalGroup(1, [q2q1, q2q3, q4q3], 13, "far-field")
     gmsh.model.addPhysicalGroup(1, [tiparc, t2t3], 14, "tip")
-    gmsh.model.addPhysicalGroup(1, [q3O], 15, "sic_sio2_interface")
+    gmsh.model.addPhysicalGroup(1, [p2q2], 15, "sic_sio2_interface")
 
     gmsh.model.mesh.generate(2)
     partitioner = mesh.create_cell_partitioner(mesh.GhostMode.shared_facet)
@@ -454,6 +450,7 @@ def _setup_weak_form(
     a = ufl.inner(epsilon_r * ufl.grad(u), ufl.grad(v)) * r
     L_bulk = rho_dimless * v * r
     L_surface = sigma_s_dimless * ufl.avg(v) * r
+    # L_surface = sigma_s_dimless * v("+") * r("+")
     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
 
     F = (
@@ -645,7 +642,7 @@ def main():
     parser.add_argument(
         "--sigma_s",
         type=float,
-        default=1e11,
+        default=1e12,
         help="Surface charge density at SiC/SiO2 interface in cm^-2.",
     )
     parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
@@ -661,6 +658,29 @@ def main():
 
     if comm.rank == 0:
         os.makedirs(args.out_dir, exist_ok=True)
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            filemode="w",
+            filename=os.path.join(args.out_dir, "main.log"),
+        )
+
+    # Also log errors to the file via the root logger's exception hook
+    def log_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logger.error(
+            "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback)
+        )
+
+    sys.excepthook = log_exception
+
+    if comm.rank == 0:
+        print("Logging to", os.path.join(args.out_dir, "main.log"))
+        start = datetime.now()
+        logger.info(f"Started simulation at {start}")
 
     # 物理パラメータの初期化 (単位をm^-3, m^-2に変換)
     phys_params = PhysicalParameters(
@@ -693,6 +713,9 @@ def main():
     run_fem_simulation(
         phys=phys_params, geom=geom_params, V_tip=args.V_tip, out_dir=args.out_dir
     )
+
+    end = datetime.now()
+    logger.info(f"Finished simulation at {end}, duration: {end - start}")
 
 
 if __name__ == "__main__":
