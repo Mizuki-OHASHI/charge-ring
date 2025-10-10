@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 
 os.makedirs("figures", exist_ok=True)
 
-out_dir_1 = "NGSpy/example_output_f"
-out_dir_2 = "NGSpy/example_output_b"
-title_1 = "NGSpy Feenstra"
-title_2 = "NGSpy Boltzmann"
+out_dir_1 = "NGSpy/example_output"
+out_dir_2 = "NGSpy/example_output2"
+title_1 = "NGSpy Feenstra 1 donor level"
+title_2 = "NGSpy Feenstra 2 donor levels"
 data_vert_1 = np.loadtxt(
     f"{out_dir_1}/line_profile_vertical.txt", skiprows=1
 )

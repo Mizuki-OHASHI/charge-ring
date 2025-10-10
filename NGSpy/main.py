@@ -14,6 +14,15 @@ from netgen.geom2d import SplineGeometry
 from ngsolve.solvers import Newton
 from scipy.optimize import brentq
 
+# NOTE:
+# 1. Feenstra, R. M. Electrostatic potential for a hyperbolic probe tip near a semiconductor. J. Vac. Sci. Technol. B 21, 2080–2088 (2003).
+# 2. Ikeda, M., Matsunami, H. & Tanaka, T. Site effect on the impurity levels in 4 H , 6 H , and 1 5 R SiC. Phys. Rev. B 22, 2842–2854 (1980).
+#     4H-SiC doped with N donor level:
+#     - Hexagonal site (H): 124 meV below Ec
+#     - Cubic site (C): 66 meV below Ec
+#     * ratio C/H = 1.88
+
+
 logger = getLogger(__name__)
 
 
@@ -28,7 +37,9 @@ class PhysicalParameters:
     m_de: float = 0.42 * const.m_e
     m_dh: float = 1.0 * const.m_e
     Eg: float = 3.26  # Bandgap [eV]
-    Ed_offset: float = 0.09  # Donor level offset [eV from Ec]
+    Ed_offset_hex: float = 0.124  # Donor level offset for hexagonal site [eV from Ec]
+    Ed_offset_cub: float = 0.066  # Donor level offset for cubic site [eV from Ec]
+    Ed_ratio_c_to_h: float = 1.88  # Ratio of cubic to hexagonal site
     Ea_offset: float = 0.2  # Acceptor level offset [eV from Ev]
     ni: float = 8.2e15  # Intrinsic carrier concentration [m^-3]
     eps_sic: float = 9.7
@@ -42,22 +53,28 @@ class PhysicalParameters:
     Nv: float = 0.0
     Ec: float = 0.0
     Ev: float = 0.0
-    Ed: float = 0.0
-    Ea: float = 0.0
+    Edh: float = 0.0  # Donor level (hex site)
+    Edc: float = 0.0  # Donor level (cub site)
+    Nd_h: float = 0.0  # Donor concentration at hexagonal sites [m^-3]
+    Nd_c: float = 0.0  # Donor concentration at cubic sites [m^-3]
     kTeV: float = 0.0
     Ef: float = 0.0
 
     def __post_init__(self):
         """Initialize and compute physical constants"""
         self.kTeV = const.k * self.T / const.e
+        # Distribute donor concentration based on site ratio
+        total_ratio = 1.0 + self.Ed_ratio_c_to_h
+        self.Nd_h = self.Nd * 1.0 / total_ratio
+        self.Nd_c = self.Nd * self.Ed_ratio_c_to_h / total_ratio
         self.n0 = (self.Nd + np.sqrt(self.Nd**2 + 4 * self.ni**2)) / 2
         self.p0 = self.ni**2 / self.n0
         self.Nc = 2 * (2 * np.pi * self.m_de * const.k * self.T / (const.h**2)) ** 1.5
         self.Nv = 2 * (2 * np.pi * self.m_dh * const.k * self.T / (const.h**2)) ** 1.5
         self.Ev = 0
         self.Ec = self.Ev + self.Eg
-        self.Ed = self.Ec - self.Ed_offset
-        self.Ea = self.Ev + self.Ea_offset
+        self.Edh = self.Ec - self.Ed_offset_hex
+        self.Edc = self.Ec - self.Ed_offset_cub
 
 
 @dataclass
@@ -97,7 +114,10 @@ def find_fermi_level(
     def charge_neutrality_eq(Ef: float) -> float:
         p = params.Nv * fermi_dirac_integral((params.Ev - Ef) / params.kTeV)
         n = params.Nc * fermi_dirac_integral((Ef - params.Ec) / params.kTeV)
-        Ndp = params.Nd / (1 + 2 * np.exp((Ef - params.Ed) / params.kTeV))
+        # Ionized donor density for each site
+        Ndp_h = params.Nd_h / (1 + 2 * np.exp((Ef - params.Edh) / params.kTeV))
+        Ndp_c = params.Nd_c / (1 + 2 * np.exp((Ef - params.Edc) / params.kTeV))
+        Ndp = Ndp_h + Ndp_c
         # solve p + Ndp = n --> log(p + Ndp) = log(n)
         # log scale to avoid overflow and improve numerical stability
         return np.log(p + Ndp) - np.log(n)
@@ -121,18 +141,34 @@ def _plot_fermi_level_determination(
     ee = np.linspace(params.Ev - 0.1, params.Ec + 0.1, 500)
     p = params.Nv * fermi_dirac_integral((params.Ev - ee) / params.kTeV)
     n = params.Nc * fermi_dirac_integral((ee - params.Ec) / params.kTeV)
-    Ndp = params.Nd / (1 + 2 * np.exp((ee - params.Ed) / params.kTeV))
+    # Ionized donor density for each site
+    Ndp_h = params.Nd_h / (1 + 2 * np.exp((ee - params.Edh) / params.kTeV))
+    Ndp_c = params.Nd_c / (1 + 2 * np.exp((ee - params.Edc) / params.kTeV))
+    Ndp = Ndp_h + Ndp_c
 
     plt.figure(figsize=(8, 6))
     plt.plot(ee, p + Ndp, label="Positive Charges ($p + N_D^+$)", color="blue", lw=2)
     plt.plot(ee, n, label="Negative Charges ($n$)", color="red", lw=2)
+    plt.plot(
+        ee,
+        Ndp_h,
+        label="$N_{D,h}^+$ (Hexagonal)",
+        color="cyan",
+        lw=1,
+        ls="--",
+        alpha=0.7,
+    )
+    plt.plot(
+        ee, Ndp_c, label="$N_{D,c}^+$ (Cubic)", color="purple", lw=1, ls="--", alpha=0.7
+    )
     plt.yscale("log")
     plt.title("Charge Concentrations vs. Fermi Level")
     plt.xlabel("Energy Level (E) / eV")
     plt.ylabel("Concentration / m$^{-3}$")
     plt.axvline(Ef, color="red", ls="-.", lw=1.5, label=f"Ef = {Ef:.2f} eV")
     plt.axvline(params.Ec, color="gray", ls=":", label="$E_c$")
-    plt.axvline(params.Ed, color="gray", ls="--", label="$E_d$")
+    plt.axvline(params.Edh, color="cyan", ls="--", lw=1, label="$E_{d,h}$ (Hex)")
+    plt.axvline(params.Edc, color="purple", ls="--", lw=1, label="$E_{d,c}$ (Cub)")
     plt.axvline(params.Ev, color="gray", ls=":", label="$E_v$")
     plt.legend()
     plt.grid(True, which="both", ls="--", alpha=0.5)
@@ -337,7 +373,8 @@ def _setup_weak_form(
     Ef_dimless = phys.Ef / V_c
     Ec_dimless = phys.Ec / V_c
     Ev_dimless = phys.Ev / V_c
-    Ed_dimless = phys.Ed / V_c
+    Edh_dimless = phys.Edh / V_c
+    Edc_dimless = phys.Edc / V_c
 
     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
     sigma_s_target = (phys.sigma_s * const.e * L_c) / (const.epsilon_0 * V_c)
@@ -351,7 +388,8 @@ def _setup_weak_form(
                 "Ef_dimless": Ef_dimless,
                 "Ec_dimless": Ec_dimless,
                 "Ev_dimless": Ev_dimless,
-                "Ed_dimless": Ed_dimless,
+                "Edh_dimless": Edh_dimless,
+                "Edc_dimless": Edc_dimless,
                 "lambda_ff": lambda_ff,
                 "sigma_s_target": sigma_s_target,
                 "Feenstra": Feenstra,
@@ -384,11 +422,18 @@ def _setup_weak_form(
     if Feenstra:
         n_term = C0 * phys.Nc * fermi_dirac_half((Ef_dimless - Ec_dimless) + u_clip)
         p_term = C0 * phys.Nv * fermi_dirac_half((Ev_dimless - Ef_dimless) - u_clip)
-        Ndp_term = C0 * phys.Nd / (1 + 2 * safe_exp((Ef_dimless - Ed_dimless) + u_clip))
-    else:  # Boltzmann approximation
+        # Ionized donor density for each site
+        Ndp_h_term = (
+            C0 * phys.Nd_h / (1 + 2 * safe_exp((Ef_dimless - Edh_dimless) + u_clip))
+        )
+        Ndp_c_term = (
+            C0 * phys.Nd_c / (1 + 2 * safe_exp((Ef_dimless - Edc_dimless) + u_clip))
+        )
+        Ndp_term = Ndp_h_term + Ndp_c_term
+    else:  # Boltzmann approximation (complete ionization)
         n_term = C0 * phys.n0 * safe_exp(u_clip)
         p_term = C0 * phys.p0 * safe_exp(-u_clip)
-        Ndp_term = C0 * phys.Nd
+        Ndp_term = C0 * phys.Nd  # Fully ionized
     rho_dimless = homotopy_charge * (p_term + Ndp_term - n_term)
 
     sigma_s_dimless = homotopy_sigma * sigma_s_target

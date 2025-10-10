@@ -2,3 +2,5 @@ FEniCS/_*/
 NGSpy/_*/
 
 **/__pycache__/
+
+NGSpy/outputs/
