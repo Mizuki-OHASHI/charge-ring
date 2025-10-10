@@ -7,14 +7,20 @@ import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main import GeometricParameters, load_results
+from main import GeometricParameters, PhysicalParameters, load_results
 
 
 def main():
     parser = argparse.ArgumentParser(description="Post-process NGSpy results")
     parser.add_argument("out_dir", type=str, help="Output directory")
+    parser.add_argument(
+        "--plot_donor_ionization",
+        action="store_true",
+        help="Plot donor ionization profile",
+    )
     args, _ = parser.parse_known_args()
     out_dir = args.out_dir
+    plot_donor_ionization = args.plot_donor_ionization
 
     print(f"Post-processing results in {out_dir}...")
     if not os.path.exists(out_dir):
@@ -26,9 +32,11 @@ def main():
     with open(os.path.join(out_dir, "metadata.json"), "r") as f:
         metadata = json.load(f)
     geom_params_input = params["geometric"]
+    phys_params_input = params["physical"]
     V_c = metadata["V_c"]
     V_tip = params["simulation"]["V_tip"]
     geom_params = GeometricParameters(**geom_params_input)
+    phys_params = PhysicalParameters(**phys_params_input)
     L_c = geom_params.L_c  # [m]
     msh, u_dimless, _ = load_results(out_dir, geom_params, V_c)
 
@@ -157,6 +165,229 @@ def main():
         np.column_stack((valid_r, potential_r)),
         header="r_nm potential_V",
     )
+
+    if plot_donor_ionization:
+        # plot lineprofiles of donor ionization
+        # calcurate Nd_h^+ and Nd_c^+ from u_dimless
+        print("Creating donor ionization line profiles...")
+
+        # Helper function to calculate ionized donor densities
+        def calculate_donor_ionization(u_dimless_val, phys_params, V_c):
+            """
+            Calculate ionized donor densities from dimensionless potential.
+
+            Parameters:
+            - u_dimless_val: dimensionless potential value
+            - phys_params: PhysicalParameters object
+            - V_c: characteristic voltage (thermal voltage)
+
+            Returns:
+            - Ndp_h, Ndp_c, Ndp_total (all in m^-3)
+            """
+            u_volt = u_dimless_val * V_c  # Convert to volts
+            kTeV = phys_params.kTeV
+
+            # Calculate ionized donor densities using Fermi-Dirac statistics
+            # Ndp = Nd / (1 + 2 * exp((Ef - Ed + e*u) / kT))
+            # In energy: Ef - Ed + e*u (where e*u is the potential energy shift)
+            Ndp_h = phys_params.Nd_h / (
+                1 + 2 * np.exp((phys_params.Ef - phys_params.Edh + u_volt) / kTeV)
+            )
+            Ndp_c = phys_params.Nd_c / (
+                1 + 2 * np.exp((phys_params.Ef - phys_params.Edc + u_volt) / kTeV)
+            )
+            Ndp_total = Ndp_h + Ndp_c
+
+            return Ndp_h, Ndp_c, Ndp_total
+
+        # --- Vertical Profile (along center axis r=0) ---
+        z_coords_donor = np.linspace(z_min, -geom_params.l_sio2, num_points)
+        Ndp_h_z = []
+        Ndp_c_z = []
+        Ndp_total_z = []
+        valid_z_donor = []
+
+        for z in z_coords_donor:
+            try:
+                # Evaluate potential at (r=0, z)
+                u_val = u_dimless(msh(0, z))
+                Ndp_h, Ndp_c, Ndp_total = calculate_donor_ionization(
+                    u_val, phys_params, V_c
+                )
+                Ndp_h_z.append(Ndp_h)
+                Ndp_c_z.append(Ndp_c)
+                Ndp_total_z.append(Ndp_total)
+                valid_z_donor.append(z)
+            except Exception:
+                continue
+
+        # --- Horizontal Profile (at z = -l_sio2) ---
+        r_coords_donor = np.linspace(0, r_max, num_points)
+        z_level_donor = -geom_params.l_sio2
+        Ndp_h_r = []
+        Ndp_c_r = []
+        Ndp_total_r = []
+        valid_r_donor = []
+
+        for r in r_coords_donor:
+            try:
+                # Evaluate potential at (r, z_level_donor)
+                u_val = u_dimless(msh(r, z_level_donor))
+                Ndp_h, Ndp_c, Ndp_total = calculate_donor_ionization(
+                    u_val, phys_params, V_c
+                )
+                Ndp_h_r.append(Ndp_h)
+                Ndp_c_r.append(Ndp_c)
+                Ndp_total_r.append(Ndp_total)
+                valid_r_donor.append(r)
+            except Exception:
+                continue
+
+        # --- Plotting ---
+        fig3, (ax3_z, ax3_r) = plt.subplots(2, 1, figsize=(8, 10))
+
+        # Vertical Plot
+        ax3_z.plot(
+            valid_z_donor,
+            np.array(Ndp_h_z) * 1e-6,
+            label="$N_{D,h}^+$ (Hex)",
+            color="blue",
+            lw=1,
+            ls="-",
+        )
+        ax3_z.plot(
+            valid_z_donor,
+            np.array(Ndp_c_z) * 1e-6,
+            label="$N_{D,c}^+$ (Cubic)",
+            color="red",
+            lw=1,
+            ls="-",
+        )
+        ax3_z.plot(
+            valid_z_donor,
+            np.array(Ndp_total_z) * 1e-6,
+            label="$N_D^+$ (Total)",
+            color="purple",
+            lw=1.5,
+            ls="-",
+        )
+        ax3_z.axhline(
+            y=phys_params.Nd_h * 1e-6,
+            color="blue",
+            ls="--",
+            lw=1,
+            label="$N_{D,h}$ (Complete Ionization (Hex))",
+        )
+        ax3_z.axhline(
+            y=phys_params.Nd_c * 1e-6,
+            color="red",
+            ls="--",
+            lw=1,
+            label="$N_{D,c}$ (Complete Ionization (Cubic))",
+        )
+        ax3_z.axhline(
+            y=phys_params.Nd * 1e-6,
+            color="purple",
+            ls="--",
+            lw=1.5,
+            label="$N_D$ (Complete Ionization)",
+        )
+        ax3_z.set_xlabel("z (nm)")
+        ax3_z.set_ylabel("Ionized Donor Density (cm$^{-3}$)")
+        ax3_z.set_title("Donor Ionization Profile along Center Axis (r=0)")
+        ax3_z.legend()
+        ax3_z.grid(True, alpha=0.3)
+        ax3_z.set_xlim(min(valid_z_donor), max(valid_z_donor))
+
+        # Horizontal Plot
+        ax3_r.plot(
+            valid_r_donor,
+            np.array(Ndp_h_r) * 1e-6,
+            label="$N_{D,h}^+$ (Hex)",
+            color="blue",
+            lw=1,
+            ls="-",
+        )
+        ax3_r.plot(
+            valid_r_donor,
+            np.array(Ndp_c_r) * 1e-6,
+            label="$N_{D,c}^+$ (Cubic)",
+            color="red",
+            lw=1,
+            ls="-",
+        )
+        ax3_r.plot(
+            valid_r_donor,
+            np.array(Ndp_total_r) * 1e-6,
+            label="$N_D^+$ (Total)",
+            color="purple",
+            lw=1.5,
+            ls="-",
+        )
+        ax3_r.axhline(
+            y=phys_params.Nd_h * 1e-6,
+            color="blue",
+            ls="--",
+            lw=1,
+            label="$N_{D,h}$ (Complete Ionization (Hex))",
+        )
+        ax3_r.axhline(
+            y=phys_params.Nd_c * 1e-6,
+            color="red",
+            ls="--",
+            lw=1,
+            label="$N_{D,c}$ (Complete Ionization (Cubic))",
+        )
+        ax3_r.axhline(
+            y=phys_params.Nd * 1e-6,
+            color="purple",
+            ls="--",
+            lw=1.5,
+            label="$N_D$ (Complete Ionization)",
+        )
+        ax3_r.set_xlabel("r (nm)")
+        ax3_r.set_ylabel("Ionized Donor Density (cm$^{-3}$)")
+        ax3_r.set_title(
+            f"Donor Ionization Profile at z = {z_level_donor:.1f} nm (SiC/SiO2 Interface)"
+        )
+        ax3_r.legend()
+        ax3_r.grid(True, alpha=0.3)
+        ax3_r.set_xlim(0, max(valid_r_donor))
+
+        fig3.tight_layout()
+        fig3.savefig(
+            os.path.join(out_dir, "donor_ionization_line_profiles.png"), dpi=150
+        )
+        print(
+            f"Saved donor ionization profiles to {os.path.join(out_dir, 'donor_ionization_line_profiles.png')}"
+        )
+
+        # Save line profile data
+        np.savetxt(
+            os.path.join(out_dir, "donor_ionization_vertical.txt"),
+            np.column_stack(
+                (
+                    valid_z_donor,
+                    np.array(Ndp_h_z) * 1e-6,
+                    np.array(Ndp_c_z) * 1e-6,
+                    np.array(Ndp_total_z) * 1e-6,
+                )
+            ),
+            header="z_nm Ndp_h_cm-3 Ndp_c_cm-3 Ndp_total_cm-3",
+        )
+        np.savetxt(
+            os.path.join(out_dir, "donor_ionization_horizontal.txt"),
+            np.column_stack(
+                (
+                    valid_r_donor,
+                    np.array(Ndp_h_r) * 1e-6,
+                    np.array(Ndp_c_r) * 1e-6,
+                    np.array(Ndp_total_r) * 1e-6,
+                )
+            ),
+            header="r_nm Ndp_h_cm-3 Ndp_c_cm-3 Ndp_total_cm-3",
+        )
+        print("Saved donor ionization data to text files.")
 
 
 if __name__ == "__main__":
