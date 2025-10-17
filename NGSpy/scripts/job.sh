@@ -37,7 +37,7 @@ NARGS=$(wc -l < $ARGSFILE)
 echo "Total $NARGS argument sets saved to $ARGSFILE"
 
 # run jobs
-NPROCS=$(( $(nproc) - 1 ))
+NPROCS=7  # physical CPU cores - 1
 echo "Using $NPROCS parallel processes"
 cat $ARGSFILE | xargs -n 3 -P $NPROCS sh -c '
     mkdir -p "$3"

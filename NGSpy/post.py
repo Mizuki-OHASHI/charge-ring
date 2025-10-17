@@ -18,9 +18,15 @@ def main():
         action="store_true",
         help="Plot donor ionization profile",
     )
+    parser.add_argument(
+        "--plot_charge_density",
+        action="store_true",
+        help="Plot charge density profile",
+    )
     args, _ = parser.parse_known_args()
     out_dir = args.out_dir
     plot_donor_ionization = args.plot_donor_ionization
+    plot_charge_density = args.plot_charge_density
 
     print(f"Post-processing results in {out_dir}...")
     if not os.path.exists(out_dir):
@@ -35,6 +41,7 @@ def main():
     phys_params_input = params["physical"]
     V_c = metadata["V_c"]
     V_tip = params["simulation"]["V_tip"]
+    assume_full_ionization = params["simulation"].get("assume_full_ionization", False)
     geom_params = GeometricParameters(**geom_params_input)
     phys_params = PhysicalParameters(**phys_params_input)
     L_c = geom_params.L_c  # [m]
@@ -388,6 +395,211 @@ def main():
             header="r_nm Ndp_h_cm-3 Ndp_c_cm-3 Ndp_total_cm-3",
         )
         print("Saved donor ionization data to text files.")
+
+    if plot_charge_density:
+        # Plot line profiles of charge density components (Nd+, n, p)
+        print("Creating charge density line profiles...")
+
+        # Helper function to calculate charge densities
+        def calculate_charge_densities(u_dimless_val, phys_params, V_c, assume_full_ionization):
+            """
+            Calculate charge densities from dimensionless potential.
+
+            Parameters:
+            - u_dimless_val: dimensionless potential value
+            - phys_params: PhysicalParameters object
+            - V_c: characteristic voltage (thermal voltage)
+            - assume_full_ionization: whether to assume complete ionization
+
+            Returns:
+            - n, p, Ndp (all in m^-3)
+            """
+            u_volt = u_dimless_val * V_c  # Convert to volts
+            kTeV = phys_params.kTeV
+
+            # Calculate electron density using Fermi-Dirac statistics
+            # n = Nc * F_{1/2}((Ef - Ec + e*u) / kT)
+            eta_n = (phys_params.Ef - phys_params.Ec + u_volt) / kTeV
+            # Use fermi_dirac_integral approximation from main.py
+            if eta_n > 25:
+                n = phys_params.Nc * (2 / np.sqrt(np.pi)) * (
+                    (2 / 3) * eta_n**1.5 + (np.pi**2 / 12) * eta_n**(-0.5)
+                )
+            else:
+                n = phys_params.Nc * np.exp(eta_n) / (1 + 0.27 * np.exp(eta_n))
+
+            # Calculate hole density using Fermi-Dirac statistics
+            # p = Nv * F_{1/2}((Ev - Ef - e*u) / kT)
+            eta_p = (phys_params.Ev - phys_params.Ef - u_volt) / kTeV
+            if eta_p > 25:
+                p = phys_params.Nv * (2 / np.sqrt(np.pi)) * (
+                    (2 / 3) * eta_p**1.5 + (np.pi**2 / 12) * eta_p**(-0.5)
+                )
+            else:
+                p = phys_params.Nv * np.exp(eta_p) / (1 + 0.27 * np.exp(eta_p))
+
+            # Calculate ionized donor density
+            if assume_full_ionization:
+                Ndp = phys_params.Nd  # Fully ionized
+            else:
+                # Ionized donor densities for each site
+                Ndp_h = phys_params.Nd_h / (
+                    1 + 2 * np.exp((phys_params.Ef - phys_params.Edh + u_volt) / kTeV)
+                )
+                Ndp_c = phys_params.Nd_c / (
+                    1 + 2 * np.exp((phys_params.Ef - phys_params.Edc + u_volt) / kTeV)
+                )
+                Ndp = Ndp_h + Ndp_c
+
+            return n, p, Ndp
+
+        # --- Vertical Profile (along center axis r=0) ---
+        z_coords_charge = np.linspace(z_min, -geom_params.l_sio2, num_points)
+        n_z = []
+        p_z = []
+        Ndp_z = []
+        valid_z_charge = []
+
+        for z in z_coords_charge:
+            try:
+                # Evaluate potential at (r=0, z)
+                u_val = u_dimless(msh(0, z))
+                n, p, Ndp = calculate_charge_densities(
+                    u_val, phys_params, V_c, assume_full_ionization
+                )
+                n_z.append(n)
+                p_z.append(p)
+                Ndp_z.append(Ndp)
+                valid_z_charge.append(z)
+            except Exception:
+                continue
+
+        # --- Horizontal Profile (at z = -l_sio2) ---
+        r_coords_charge = np.linspace(0, r_max, num_points)
+        z_level_charge = -geom_params.l_sio2
+        n_r = []
+        p_r = []
+        Ndp_r = []
+        valid_r_charge = []
+
+        for r in r_coords_charge:
+            try:
+                # Evaluate potential at (r, z_level_charge)
+                u_val = u_dimless(msh(r, z_level_charge))
+                n, p, Ndp = calculate_charge_densities(
+                    u_val, phys_params, V_c, assume_full_ionization
+                )
+                n_r.append(n)
+                p_r.append(p)
+                Ndp_r.append(Ndp)
+                valid_r_charge.append(r)
+            except Exception:
+                continue
+
+        # --- Plotting ---
+        fig4, (ax4_z, ax4_r) = plt.subplots(2, 1, figsize=(8, 10))
+
+        # Vertical Plot
+        ax4_z.semilogy(
+            valid_z_charge,
+            np.array(n_z) * 1e-6,
+            label="$n$ (Electron)",
+            color="blue",
+            lw=1.5,
+            ls="-",
+        )
+        # ax4_z.semilogy(
+        #     valid_z_charge,
+        #     np.array(p_z) * 1e-6,
+        #     label="$p$ (Hole)",
+        #     color="red",
+        #     lw=1.5,
+        #     ls="-",
+        # )
+        ax4_z.semilogy(
+            valid_z_charge,
+            np.array(Ndp_z) * 1e-6,
+            label="$N_D^+$ (Ionized Donor)",
+            color="red",
+            lw=1.5,
+            ls="-",
+        )
+        ax4_z.set_xlabel("z (nm)")
+        ax4_z.set_ylabel("Charge Density (cm$^{-3}$)")
+        ionization_status = "Full Ionization" if assume_full_ionization else "Partial Ionization"
+        ax4_z.set_title(f"Charge Density Profile along Center Axis (r=0)\n({ionization_status})")
+        ax4_z.legend()
+        ax4_z.grid(True, which="both", alpha=0.3)
+        ax4_z.set_xlim(min(valid_z_charge), max(valid_z_charge))
+
+        # Horizontal Plot
+        ax4_r.semilogy(
+            valid_r_charge,
+            np.array(n_r) * 1e-6,
+            label="$n$ (Electron)",
+            color="blue",
+            lw=1.5,
+            ls="-",
+        )
+        # ax4_r.semilogy(
+        #     valid_r_charge,
+        #     np.array(p_r) * 1e-6,
+        #     label="$p$ (Hole)",
+        #     color="red",
+        #     lw=1.5,
+        #     ls="-",
+        # )
+        ax4_r.semilogy(
+            valid_r_charge,
+            np.array(Ndp_r) * 1e-6,
+            label="$N_D^+$ (Ionized Donor)",
+            color="red",
+            lw=1.5,
+            ls="-",
+        )
+        ax4_r.set_xlabel("r (nm)")
+        ax4_r.set_ylabel("Charge Density (cm$^{-3}$)")
+        ax4_r.set_title(
+            f"Charge Density Profile at z = {z_level_charge:.1f} nm (SiC/SiO2 Interface)\n({ionization_status})"
+        )
+        ax4_r.legend()
+        ax4_r.grid(True, which="both", alpha=0.3)
+        ax4_r.set_xlim(0, max(valid_r_charge))
+
+        fig4.tight_layout()
+        fig4.savefig(
+            os.path.join(out_dir, "charge_density_line_profiles.png"), dpi=150
+        )
+        print(
+            f"Saved charge density profiles to {os.path.join(out_dir, 'charge_density_line_profiles.png')}"
+        )
+
+        # Save line profile data
+        np.savetxt(
+            os.path.join(out_dir, "charge_density_vertical.txt"),
+            np.column_stack(
+                (
+                    valid_z_charge,
+                    np.array(n_z) * 1e-6,
+                    np.array(p_z) * 1e-6,
+                    np.array(Ndp_z) * 1e-6,
+                )
+            ),
+            header="z_nm n_cm-3 p_cm-3 Ndp_cm-3",
+        )
+        np.savetxt(
+            os.path.join(out_dir, "charge_density_horizontal.txt"),
+            np.column_stack(
+                (
+                    valid_r_charge,
+                    np.array(n_r) * 1e-6,
+                    np.array(p_r) * 1e-6,
+                    np.array(Ndp_r) * 1e-6,
+                )
+            ),
+            header="r_nm n_cm-3 p_cm-3 Ndp_cm-3",
+        )
+        print("Saved charge density data to text files.")
 
 
 if __name__ == "__main__":
