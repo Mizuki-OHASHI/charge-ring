@@ -315,6 +315,7 @@ def run_fem_simulation(
     V_tip: float,
     Feenstra: bool,
     out_dir: str,
+    assume_full_ionization: bool,
 ):
     """Run the FEM simulation using NGSolve"""
 
@@ -345,6 +346,7 @@ def run_fem_simulation(
         geom,
         msh,
         Feenstra,
+        assume_full_ionization,
     )
 
     # Set boundary conditions
@@ -361,7 +363,17 @@ def run_fem_simulation(
 
 
 def _setup_weak_form(
-    fes, epsilon_r, phys, V_c, L_c, homotopy_charge, homotopy_sigma, geom, msh, Feenstra
+    fes,
+    epsilon_r,
+    phys,
+    V_c,
+    L_c,
+    homotopy_charge,
+    homotopy_sigma,
+    geom,
+    msh,
+    Feenstra,
+    assume_full_ionization,
 ):
     """Define the weak form of the Poisson equation with nonlinear charge density"""
 
@@ -422,14 +434,18 @@ def _setup_weak_form(
     if Feenstra:
         n_term = C0 * phys.Nc * fermi_dirac_half((Ef_dimless - Ec_dimless) + u_clip)
         p_term = C0 * phys.Nv * fermi_dirac_half((Ev_dimless - Ef_dimless) - u_clip)
-        # Ionized donor density for each site
-        Ndp_h_term = (
-            C0 * phys.Nd_h / (1 + 2 * safe_exp((Ef_dimless - Edh_dimless) + u_clip))
-        )
-        Ndp_c_term = (
-            C0 * phys.Nd_c / (1 + 2 * safe_exp((Ef_dimless - Edc_dimless) + u_clip))
-        )
-        Ndp_term = Ndp_h_term + Ndp_c_term
+        if assume_full_ionization:
+            # Boltzmann approximation (complete ionization)
+            Ndp_term = C0 * phys.Nd  # Fully ionized
+        else:
+            # Ionized donor density for each site
+            Ndp_h_term = (
+                C0 * phys.Nd_h / (1 + 2 * safe_exp((Ef_dimless - Edh_dimless) + u_clip))
+            )
+            Ndp_c_term = (
+                C0 * phys.Nd_c / (1 + 2 * safe_exp((Ef_dimless - Edc_dimless) + u_clip))
+            )
+            Ndp_term = Ndp_h_term + Ndp_c_term
     else:  # Boltzmann approximation (complete ionization)
         n_term = C0 * phys.n0 * safe_exp(u_clip)
         p_term = C0 * phys.p0 * safe_exp(-u_clip)
@@ -718,6 +734,11 @@ def main():
         default="Feenstra",
         help="Choose the carrier statistics model.",
     )
+    parser.add_argument(
+        "--assume_full_ionization",
+        action="store_true",
+        help="Assume complete ionization of donors (overrides model to Boltzmann).",
+    )
     args, _ = parser.parse_known_args()
 
     # Create output directory
@@ -745,6 +766,11 @@ def main():
     start = datetime.now()
     logger.info(f"Started simulation at {start}")
 
+    if args.model.lower().startswith("b") and args.assume_full_ionization:
+        logger.warning(
+            "Boltzmann model always assumes full ionization; --assume_full_ionization has no effect."
+        )
+
     # Initialize physical parameters (convert units to m^-3, m^-2)
     phys_params = PhysicalParameters(
         T=args.T,
@@ -765,7 +791,12 @@ def main():
     all_params = {
         "physical": asdict(phys_params),
         "geometric": asdict(geom_params),
-        "simulation": {"V_tip": args.V_tip},
+        "simulation": {
+            "V_tip": args.V_tip,
+            "model": args.model,
+            "assume_full_ionization": args.assume_full_ionization,
+        },
+        "args": vars(args),
     }
     with open(os.path.join(args.out_dir, "parameters.json"), "w") as f:
         json.dump(all_params, f, indent=2)
@@ -777,6 +808,7 @@ def main():
         V_tip=args.V_tip,
         out_dir=args.out_dir,
         Feenstra=(args.model[0].upper() == "F"),
+        assume_full_ionization=args.assume_full_ionization,
     )
 
     end = datetime.now()

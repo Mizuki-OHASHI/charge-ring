@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 
 os.makedirs("figures", exist_ok=True)
 
-out_dir_1 = "NGSpy/example_output"
-out_dir_2 = "NGSpy/example_output2"
-title_1 = "NGSpy Feenstra 1 donor level"
-title_2 = "NGSpy Feenstra 2 donor levels"
+out_dir_1 = "NGSpy/outputs/20251017_133658/Vtip-4.0_Rtip50"
+out_dir_2 = "NGSpy/outputs/20251017_132602/Vtip-4.0_Rtip50"
+title_1 = "NGSpy Feenstra consider donor ionization rates"
+title_2 = "NGSpy Feenstra assume full ionization"
 data_vert_1 = np.loadtxt(
     f"{out_dir_1}/line_profile_vertical.txt", skiprows=1
 )
