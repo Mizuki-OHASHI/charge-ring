@@ -1,4 +1,13 @@
 #!/bin/bash
+#PBS -N NGSpy_job
+#PBS -o NGSpy_job.out
+#PBS -e NGSpy_job.err
+
+# micromamba
+export PATH="$HOME/micromamba/bin:$PATH"
+eval "$(micromamba shell hook -s bash)"
+
+micromamba activate fem3
 
 # check current directory pwd should be **/NGSpy
 if [ "$(basename "$PWD")" != "NGSpy" ]; then
@@ -28,8 +37,8 @@ echo "Output path: $OUTPATH"
 
 # create args.txt
 ARGSFILE=$OUTPATH/args.txt
-for Vtip in $(seq -8 1 8); do
-for Rtip in $(seq 30 10 60); do
+for Vtip in $(seq -6 0.2 6); do
+for Rtip in $(seq 25 5 75); do
     printf "%.1f %d %s/Vtip%.1f_Rtip%d\n" "$Vtip" "$Rtip" "$OUTPATH" "$Vtip" "$Rtip"
   done
 done > $ARGSFILE
