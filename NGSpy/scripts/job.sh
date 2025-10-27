@@ -36,9 +36,11 @@ echo "Output path: $OUTPATH"
 
 # create args.txt
 ARGSFILE=$OUTPATH/args.txt
-for Vtip in $(seq -6 0.2 6); do
-for Rtip in $(seq 25 5 75); do
-    printf "%.1f %d %s/Vtip%.1f_Rtip%d\n" "$Vtip" "$Rtip" "$OUTPATH" "$Vtip" "$Rtip"
+for Vtip in $(seq -6 0.5 6); do
+  for Rtip in $(seq 25 5 65); do
+    for Htip in $(seq 3 0.5 18); do
+      printf "%.1f %d %.1f %s/Vtip_%.1f_Rtip_%d_Htip_%.1f\n" "$Vtip" "$Rtip" "$Htip" "$OUTPATH" "$Vtip" "$Rtip" "$Htip"
+    done
   done
 done > $ARGSFILE
 NARGS=$(wc -l < $ARGSFILE)
@@ -47,11 +49,11 @@ echo "Total $NARGS argument sets saved to $ARGSFILE"
 # run jobs
 NPROCS=7  # physical CPU cores - 1
 echo "Using $NPROCS parallel processes"
-cat $ARGSFILE | xargs -n 3 -P $NPROCS sh -c '
-    mkdir -p "$3"
-    echo "[$(date "+%Y-%m-%d %H:%M:%S")] Running with V_tip=$1, R_tip=$2"
-    python main.py --V_tip "$1" --R_tip "$2" --out_dir "$3" >> "$3/main.job.log" 2>&1 && \
-    python post.py "$3" >> "$3/post.job.log" 2>&1
+cat $ARGSFILE | xargs -n 4 -P $NPROCS sh -c '
+    mkdir -p "$4"
+    echo "[$(date "+%Y-%m-%d %H:%M:%S")] Running with V_tip=$1, R_tip=$2, H_tip=$3"
+    python main.py --V_tip "$1" --tip_radius "$2" --tip_height "$3" --out_dir "$4" >> "$4/main.job.log" 2>&1 && \
+    python post.py "$4" >> "$4/post.job.log" 2>&1
 ' sh && \
 echo "All jobs completed."
 echo "Results are saved in $OUTPATH"
