@@ -1,7 +1,5 @@
 #!/bin/bash
 #PBS -N NGSpy_job
-#PBS -o NGSpy_job.out
-#PBS -e NGSpy_job.err
 
 # micromamba
 export PATH="$HOME/micromamba/bin:$PATH"
@@ -11,6 +9,7 @@ micromamba activate fem3
 
 # check current directory pwd should be **/NGSpy
 if [ "$(basename "$PWD")" != "NGSpy" ]; then
+  echo "current directory: $PWD"
   echo "Please run this script from the NGSpy directory."
   exit 1
 fi
