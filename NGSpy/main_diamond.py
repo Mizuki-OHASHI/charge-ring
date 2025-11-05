@@ -65,7 +65,7 @@ class PhysicalParameters:
         )
 
         self.Nc = 6 * 2 * (2 * np.pi * self.m_e_eff * const.k * self.T / (const.h**2)) ** 1.5
-        # TODO: `6 *`: ダイヤモンドの伝導帯は6つの等価な谷を持つ
+        # TODO: `6 *`: ダイヤモンドの伝導帯は6つの等価な谷を持つため
 
         self.Nv = 2 * (2 * np.pi * self.m_h_eff * const.k * self.T / (const.h**2)) ** 1.5
         self.Ev = 0.0
@@ -251,7 +251,7 @@ def create_mesh(geom: GeometricParameters):
     # Diamond domain (material 1)
     geo.Append(["line", p1, origin], bc="axis", leftdomain=0, rightdomain=1, maxh=5)
     geo.Append(
-        ["line", origin, q2], bc="diamond/vacuum", leftdomain=2, rightdomain=1, maxh=0.5
+        ["line", origin, q2], bc="diamond/vacuum", leftdomain=2, rightdomain=1, maxh=1
     )
     geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
     geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
@@ -287,8 +287,8 @@ def create_mesh(geom: GeometricParameters):
     logger.info("Starting mesh generation...")
     logger.info("  (This may take a while for complex geometries...)")
 
-    geo.SetDomainMaxH(1, 5.0)
-    geo.SetDomainMaxH(2, 2.0)
+    # geo.SetDomainMaxH(1, 5.0)
+    # geo.SetDomainMaxH(2, 2.0)
 
     ngmesh = geo.GenerateMesh(maxh=10, grading=0.2)
     logger.info("Mesh generation completed")

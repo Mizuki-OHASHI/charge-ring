@@ -4,3 +4,6 @@ NGSpy/_*/
 **/__pycache__/
 
 NGSpy/outputs/
+NGSpy/outputs_diamond/
+NGSpy/diamond_data_6B3645/
+NGSpy/diamond_data.zip
