@@ -7,13 +7,7 @@ import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main_diamond import (
-    GeometricParameters,
-    PhysicalParameters,
-    fermi_dirac_integral,
-    load_results,
-)
-
+from main_diamond import GeometricParameters, PhysicalParameters, load_results
 
 def exp_clamped(x, limit=100.0):
     return np.exp(np.clip(x, -limit, limit))
@@ -306,15 +300,28 @@ def main():
         Ev_dimless = phys_params.Ev / V_c
         Ea_dimless = phys_params.Ea / V_c
 
-        def fd_half_scalar(x):
-            return float(fermi_dirac_integral(np.array([x]))[0])
+        def fd_half_aymerich(eta):
+            a1_aymerich = 6.316
+            a2_aymerich = 12.92
+            C_deg_aymerich = 0.75224956896  # 4 / (3 * sqrt(pi))
+
+            if eta < -10.0:
+                return np.exp(eta)
+
+            eta_safe = max(eta, -4.0)
+            G_inv_denominator = C_deg_aymerich * (
+                eta_safe**2 + a1_aymerich * eta_safe + a2_aymerich
+            ) ** 0.75
+            exp_neg_eta = np.exp(-eta)
+
+            return 1.0 / (exp_neg_eta + (1.0 / G_inv_denominator))
 
         def calculate_charge_densities(u_dimless_val):
             if use_feenstra:
                 eta_n = (Ef_dimless - Ec_dimless) + u_dimless_val
                 eta_p = (Ev_dimless - Ef_dimless) - u_dimless_val
-                n = phys_params.Nc * fd_half_scalar(eta_n)
-                p = phys_params.Nv * fd_half_scalar(eta_p)
+                n = phys_params.Nc * fd_half_aymerich(eta_n)
+                p = phys_params.Nv * fd_half_aymerich(eta_p)
             else:
                 n = phys_params.n0 * exp_clamped(u_dimless_val)
                 p = phys_params.p0 * exp_clamped(-u_dimless_val)

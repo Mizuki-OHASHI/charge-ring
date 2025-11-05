@@ -420,23 +420,47 @@ def main():
             # Calculate electron density using Fermi-Dirac statistics
             # n = Nc * F_{1/2}((Ef - Ec + e*u) / kT)
             eta_n = (phys_params.Ef - phys_params.Ec + u_volt) / kTeV
+            
             # Use fermi_dirac_integral approximation from main.py
-            if eta_n > 25:
-                n = phys_params.Nc * (2 / np.sqrt(np.pi)) * (
-                    (2 / 3) * eta_n**1.5 + (np.pi**2 / 12) * eta_n**(-0.5)
-                )
+            # Aymerich-Humet approximation constants for F_{1/2}
+            a1_aymerich = 6.316
+            a2_aymerich = 12.92
+            C_deg_aymerich = 0.75224956896  # 4 / (3 * sqrt(pi))
+
+            if eta_n < -10.0:
+                # Non-degenerate region (Boltzmann approximation)
+                n_integral_approx = np.exp(eta_n)
             else:
-                n = phys_params.Nc * np.exp(eta_n) / (1 + 0.27 * np.exp(eta_n))
+                # Aymerich-Humet approximation (valid across the full range)
+                eta_n_safe = max(eta_n, -4.0)
+                G_inv_denominator = C_deg_aymerich * (
+                    eta_n_safe**2 + a1_aymerich * eta_n_safe + a2_aymerich
+                ) ** 0.75
+                exp_neg_eta_n = np.exp(-eta_n)
+                n_integral_approx = 1.0 / (
+                    exp_neg_eta_n + (1.0 / G_inv_denominator)
+                )
+
+            n = phys_params.Nc * n_integral_approx
 
             # Calculate hole density using Fermi-Dirac statistics
             # p = Nv * F_{1/2}((Ev - Ef - e*u) / kT)
             eta_p = (phys_params.Ev - phys_params.Ef - u_volt) / kTeV
-            if eta_p > 25:
-                p = phys_params.Nv * (2 / np.sqrt(np.pi)) * (
-                    (2 / 3) * eta_p**1.5 + (np.pi**2 / 12) * eta_p**(-0.5)
-                )
+            if eta_p < -10.0:
+                # 非縮退領域 (ボルツマン近似)
+                # F_1/2(eta_p) \approx exp(eta_p)
+                p_integral_approx = np.exp(eta_p)
             else:
-                p = phys_params.Nv * np.exp(eta_p) / (1 + 0.27 * np.exp(eta_p))
+                # Aymerich-Humet 近似 (全領域で有効)
+                # F_1/2(eta_p) \approx 1.0 / (exp(-eta_p) + G(eta_p)^-1)
+                eta_p_safe = max(eta_p, -4.0)
+                G_inv_denominator = C_deg_aymerich * (
+                    eta_p_safe**2 + a1_aymerich * eta_p_safe + a2_aymerich
+                ) ** 0.75
+                exp_neg_eta_p = np.exp(-eta_p)
+                p_integral_approx = 1.0 / (exp_neg_eta_p + (1.0 / G_inv_denominator))
+
+            p = phys_params.Nv * p_integral_approx
 
             # Calculate ionized donor density
             if assume_full_ionization:
