@@ -93,17 +93,45 @@ class GeometricParameters:
         assert self.n_tip_arc_points % 2 == 1, "n_tip_arc_points should be odd"
 
 
+# def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
+#     """Fermi-Dirac integral of half-integer order (j=1/2) approximation"""
+#     return np.piecewise(
+#         x,
+#         [x > 25],
+#         [
+#             lambda x: (2 / np.sqrt(np.pi))
+#             * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
+#             lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
+#         ],
+#     )
+
 def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
-    """Fermi-Dirac integral of half-integer order (j=1/2) approximation"""
-    return np.piecewise(
+    """
+    Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
+    by Aymerich-Humet et al. (1981).
+    
+    This approximation is continuous and accurate across all regimes,
+    transitioning smoothly from the Boltzmann limit (exp(x) for x << 0)
+    to the degenerate limit (Sommerfeld expansion, first-order term).
+    """
+    
+    # Aymerich-Humet et al. (1981) approximation parameters
+    a1 = 6.316
+    a2 = 12.92
+    
+    # Pre-factor for the degenerate limit (4 / (3 * sqrt(pi)))
+    C_deg = 0.75224956896
+
+    result = np.piecewise(
         x,
-        [x > 25],
+        [x < -10.0],  # Non-degenerate regime
         [
-            lambda x: (2 / np.sqrt(np.pi))
-            * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
-            lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
-        ],
+            lambda x: np.exp(x),
+            lambda x: 1.0 / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2)**0.75)**(-1.0))
+        ]
     )
+    
+    return result
 
 
 def find_fermi_level(
@@ -420,13 +448,53 @@ def _setup_weak_form(
         x_clip = clamp(x, clip_exp)
         return ng.exp(x_clip)
 
+    # def fermi_dirac_half(x):
+    #     x_clip = clamp(x, clip_exp)
+    #     high = (2 / np.sqrt(np.pi)) * (
+    #         (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
+    #     )
+    #     low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
+    #     return ng.IfPos(x_clip - 25.0, high, low)
+
     def fermi_dirac_half(x):
-        x_clip = clamp(x, clip_exp)
-        high = (2 / np.sqrt(np.pi)) * (
-            (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
-        )
-        low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
-        return ng.IfPos(x_clip - 25.0, high, low)
+        """
+        Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
+        by Aymerich-Humet et al. (1981), implemented for NGSolve.
+        """
+        
+        # Aymerich-Humet 近似 (F_1/2) のための定数
+        a1 = 6.316
+        a2 = 12.92
+        C_deg = 0.75224956896  # 4 / (3 * np.sqrt(np.pi))
+
+        # 1. 非縮退領域 (x < -10.0) の近似: F_1/2(x) \approx exp(x)
+        #    safe_exp は x を clamp(x, clip_exp) してから ng.exp() する
+        boltzmann_approx = safe_exp(x)
+
+        # 2. 全領域の近似: F_1/2(x) \approx [exp(-x) + G(x)^-1]^-1
+        
+        # 2a. exp(-x) の項
+        #     safe_exp(-x) は -x を clamp する (x を [-clip_exp, clip_exp] にクランプ)
+        exp_neg_x = safe_exp(-x)
+        
+        # 2b. G(x)^-1 の項
+        #     多項式 (x^2 + a1*x + a2) は x >= -4.0 で定義されているため
+        #     x_safe = max(x, -4.0) を ng.IfPos で実装
+        x_safe = ng.IfPos(x - (-4.0), x, -4.0)
+        
+        G_inv_denominator = C_deg * (
+            x_safe**2 + a1 * x_safe + a2
+        )**0.75
+        
+        # G(x)^-1 を計算 (多項式は x >= -4 で常に正なのでゼロ除算の心配はない)
+        G_inv = G_inv_denominator**(-1.0)
+        
+        # 2c. 全領域の近似式を結合
+        full_approx = (exp_neg_x + G_inv)**(-1.0)
+
+        # 3. x = -10.0 を境に、非縮退近似と全領域近似を切り替える
+        #    これにより、x が非常に小さい負の値のときの数値的安定性を確保する
+        return ng.IfPos(x - (-10.0), full_approx, boltzmann_approx)
 
     u_clip = clamp(uh, clip_potential)
 

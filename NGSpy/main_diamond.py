@@ -20,53 +20,63 @@ logger = getLogger(__name__)
 
 @dataclass
 class PhysicalParameters:
-    """Store physical parameters related to the simulation"""
+    """Store physical parameters for the diamond simulation"""
 
     T: float = 300.0  # Temperature [K]
-    Nd: float = 1e22  # Donor concentration [m^-3]
-    Na: float = 0.0  # Acceptor concentration [m^-3]
-    sigma_s: float = 1e15  # Surface charge density at SiC/SiO2 interface [m^-2]
-    m_de: float = 0.42 * const.m_e
-    m_dh: float = 1.0 * const.m_e
-    Eg: float = 3.26  # Bandgap [eV]
-    Ed_offset_hex: float = 0.124  # Donor level offset for hexagonal site [eV from Ec]
-    Ed_offset_cub: float = 0.066  # Donor level offset for cubic site [eV from Ec]
-    Ed_ratio_c_to_h: float = 1.88  # Ratio of cubic to hexagonal site
-    Ea_offset: float = 0.2  # Acceptor level offset [eV from Ev]
-    ni: float = 8.2e15  # Intrinsic carrier concentration [m^-3]
-    eps_sic: float = 9.7
-    eps_sio2: float = 3.9
+    Na: float = 1.3e23  # Acceptor concentration [m^-3]
+    sigma_s: float = 0.0  # Surface charge density at diamond/vacuum interface [m^-2]
+    Eg: float = 5.5  # Bandgap [eV]
+    Ea_offset: float = 0.37  # Acceptor level offset [eV from Ev]
+    ni: float = 1e-21  # Intrinsic carrier concentration [m^-3]
+    eps_diamond: float = 5.7
     eps_vac: float = 1.0
+    g_a: float = 4.0  # Acceptor degeneracy factor
+    m_e_longitudinal_ratio: float = 1.56  # Electron longitudinal mass / m0
+    m_e_transverse_ratio: float = 0.28  # Electron transverse mass / m0
+    m_h_heavy_ratio: float = 0.67  # Heavy hole mass / m0
+    m_h_light_ratio: float = 0.26  # Light hole mass / m0
 
-    # Physical quantities derived from calculations
-    n0: float = 0.0
-    p0: float = 0.0
+    # Derived quantities
+    kTeV: float = 0.0
     Nc: float = 0.0
     Nv: float = 0.0
     Ec: float = 0.0
     Ev: float = 0.0
-    Edh: float = 0.0  # Donor level (hex site)
-    Edc: float = 0.0  # Donor level (cub site)
-    Nd_h: float = 0.0  # Donor concentration at hexagonal sites [m^-3]
-    Nd_c: float = 0.0  # Donor concentration at cubic sites [m^-3]
-    kTeV: float = 0.0
+    Ea: float = 0.0
     Ef: float = 0.0
+    n0: float = 0.0
+    p0: float = 0.0
+    Na_minus0: float = 0.0
+    m_e_eff: float = 0.0
+    m_h_eff: float = 0.0
 
     def __post_init__(self):
         """Initialize and compute physical constants"""
         self.kTeV = const.k * self.T / const.e
-        # Distribute donor concentration based on site ratio
-        total_ratio = 1.0 + self.Ed_ratio_c_to_h
-        self.Nd_h = self.Nd * 1.0 / total_ratio
-        self.Nd_c = self.Nd * self.Ed_ratio_c_to_h / total_ratio
-        self.n0 = (self.Nd + np.sqrt(self.Nd**2 + 4 * self.ni**2)) / 2
-        self.p0 = self.ni**2 / self.n0
-        self.Nc = 2 * (2 * np.pi * self.m_de * const.k * self.T / (const.h**2)) ** 1.5
-        self.Nv = 2 * (2 * np.pi * self.m_dh * const.k * self.T / (const.h**2)) ** 1.5
-        self.Ev = 0
+
+        m0 = const.m_e
+        ml = self.m_e_longitudinal_ratio * m0
+        mt = self.m_e_transverse_ratio * m0
+        self.m_e_eff = (ml * mt**2) ** (1 / 3)
+        self.m_h_eff = (
+            (self.m_h_heavy_ratio ** (3 / 2) + self.m_h_light_ratio ** (3 / 2))
+            ** (2 / 3)
+            * m0
+        )
+
+        self.Nc = 6 * 2 * (2 * np.pi * self.m_e_eff * const.k * self.T / (const.h**2)) ** 1.5
+        # TODO: `6 *`: ダイヤモンドの伝導帯は6つの等価な谷を持つ
+
+        self.Nv = 2 * (2 * np.pi * self.m_h_eff * const.k * self.T / (const.h**2)) ** 1.5
+        self.Ev = 0.0
         self.Ec = self.Ev + self.Eg
-        self.Edh = self.Ec - self.Ed_offset_hex
-        self.Edc = self.Ec - self.Ed_offset_cub
+        self.Ea = self.Ev + self.Ea_offset
+
+    def update_equilibrium_densities(self):
+        """Update equilibrium carrier and ionized acceptor densities"""
+        self.p0 = self.Nv * np.exp((self.Ev - self.Ef) / self.kTeV)
+        self.n0 = self.Nc * np.exp((self.Ef - self.Ec) / self.kTeV)
+        self.Na_minus0 = self.Na / (1 + self.g_a * np.exp((self.Ea - self.Ef) / self.kTeV))
 
 
 @dataclass
@@ -74,7 +84,7 @@ class GeometricParameters:
     """Store geometric parameters related to the simulation"""
 
     L_c: float = 1e-9  # Characteristic length [1 nm]
-    l_sio2: float = 5.0  # SiO2 layer thickness [nm]
+    diamond_thickness: float = 200.0  # Diamond layer thickness [nm]
     tip_radius: float = 45.0  # Tip curvature radius [nm]
     tip_height: float = 8.0  # Distance from tip to sample [nm]
     l_vac: float = 200.0  # Vacuum layer thickness [nm]
@@ -85,17 +95,45 @@ class GeometricParameters:
         assert self.n_tip_arc_points % 2 == 1, "n_tip_arc_points should be odd"
 
 
+# def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
+#     """Fermi-Dirac integral of half-integer order (j=1/2) approximation"""
+#     return np.piecewise(
+#         x,
+#         [x > 25],
+#         [
+#             lambda x: (2 / np.sqrt(np.pi))
+#             * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
+#             lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
+#         ],
+#     )
+
 def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
-    """Fermi-Dirac integral of half-integer order (j=1/2) approximation"""
-    return np.piecewise(
+    """
+    Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
+    by Aymerich-Humet et al. (1981).
+    
+    This approximation is continuous and accurate across all regimes,
+    transitioning smoothly from the Boltzmann limit (exp(x) for x << 0)
+    to the degenerate limit (Sommerfeld expansion, first-order term).
+    """
+    
+    # Aymerich-Humet et al. (1981) approximation parameters
+    a1 = 6.316
+    a2 = 12.92
+    
+    # Pre-factor for the degenerate limit (4 / (3 * sqrt(pi)))
+    C_deg = 0.75224956896
+
+    result = np.piecewise(
         x,
-        [x > 25],
+        [x < -10.0],  # Non-degenerate regime
         [
-            lambda x: (2 / np.sqrt(np.pi))
-            * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
-            lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
-        ],
+            lambda x: np.exp(x),
+            lambda x: 1.0 / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2)**0.75)**(-1.0))
+        ]
     )
+    
+    return result
 
 
 def find_fermi_level(
@@ -106,21 +144,17 @@ def find_fermi_level(
     def charge_neutrality_eq(Ef: float) -> float:
         p = params.Nv * fermi_dirac_integral((params.Ev - Ef) / params.kTeV)
         n = params.Nc * fermi_dirac_integral((Ef - params.Ec) / params.kTeV)
-        # Ionized donor density for each site
-        Ndp_h = params.Nd_h / (1 + 2 * np.exp((Ef - params.Edh) / params.kTeV))
-        Ndp_c = params.Nd_c / (1 + 2 * np.exp((Ef - params.Edc) / params.kTeV))
-        Ndp = Ndp_h + Ndp_c
-        # solve p + Ndp = n --> log(p + Ndp) = log(n)
-        # log scale to avoid overflow and improve numerical stability
-        return np.log(p + Ndp) - np.log(n)
+        Na_minus = params.Na / (1 + params.g_a * np.exp((params.Ea - Ef) / params.kTeV))
+        return np.log(p) - np.log(n + Na_minus)
 
-    search_min = params.Ev + params.kTeV
-    search_max = params.Ec - params.kTeV
+    search_min = params.Ev - 1.0
+    search_max = params.Ec + 1.0
     Ef, res = brentq(charge_neutrality_eq, search_min, search_max, full_output=True)
     if not res.converged:
         raise ValueError("Root finding for Fermi level did not converge")
 
-    _plot_fermi_level_determination(params, Ef, out_dir)
+    if plot:
+        _plot_fermi_level_determination(params, Ef, out_dir)
 
     return Ef
 
@@ -133,25 +167,25 @@ def _plot_fermi_level_determination(
     ee = np.linspace(params.Ev - 0.1, params.Ec + 0.1, 500)
     p = params.Nv * fermi_dirac_integral((params.Ev - ee) / params.kTeV)
     n = params.Nc * fermi_dirac_integral((ee - params.Ec) / params.kTeV)
-    # Ionized donor density for each site
-    Ndp_h = params.Nd_h / (1 + 2 * np.exp((ee - params.Edh) / params.kTeV))
-    Ndp_c = params.Nd_c / (1 + 2 * np.exp((ee - params.Edc) / params.kTeV))
-    Ndp = Ndp_h + Ndp_c
+    Na_minus = params.Na / (1 + params.g_a * np.exp((params.Ea - ee) / params.kTeV))
 
     plt.figure(figsize=(8, 6))
-    plt.plot(ee, p + Ndp, label="Positive Charges ($p + N_D^+$)", color="blue", lw=2)
-    plt.plot(ee, n, label="Negative Charges ($n$)", color="red", lw=2)
+    plt.plot(ee, p, label="Positive Charges ($p$)", color="blue", lw=2)
     plt.plot(
         ee,
-        Ndp_h,
-        label="$N_{D,h}^+$ (Hexagonal)",
-        color="cyan",
+        n + Na_minus,
+        label="Negative Charges ($n + N_A^-$)",
+        color="red",
+        lw=2,
+    )
+    plt.plot(
+        ee,
+        Na_minus,
+        label="$N_A^-$",
+        color="purple",
         lw=1,
         ls="--",
         alpha=0.7,
-    )
-    plt.plot(
-        ee, Ndp_c, label="$N_{D,c}^+$ (Cubic)", color="purple", lw=1, ls="--", alpha=0.7
     )
     plt.yscale("log")
     plt.title("Charge Concentrations vs. Fermi Level")
@@ -159,8 +193,7 @@ def _plot_fermi_level_determination(
     plt.ylabel("Concentration / m$^{-3}$")
     plt.axvline(Ef, color="red", ls="-.", lw=1.5, label=f"Ef = {Ef:.2f} eV")
     plt.axvline(params.Ec, color="gray", ls=":", label="$E_c$")
-    plt.axvline(params.Edh, color="cyan", ls="--", lw=1, label="$E_{d,h}$ (Hex)")
-    plt.axvline(params.Edc, color="purple", ls="--", lw=1, label="$E_{d,c}$ (Cub)")
+    plt.axvline(params.Ea, color="purple", ls="--", lw=1, label="$E_a$")
     plt.axvline(params.Ev, color="gray", ls=":", label="$E_v$")
     plt.legend()
     plt.grid(True, which="both", ls="--", alpha=0.5)
@@ -171,34 +204,27 @@ def _plot_fermi_level_determination(
 def create_mesh(geom: GeometricParameters):
     """Use netgen to generate the geometry and mesh for the simulation region"""
 
-    # Non-dimensionalization of geometry (representative length L_c)
     L_c = geom.L_c
     R_dimless = geom.region_radius * 1e-9 / L_c
-    sio2_depth_dimless = geom.l_sio2 * 1e-9 / L_c
+    diamond_depth_dimless = geom.diamond_thickness * 1e-9 / L_c
     vac_depth_dimless = geom.l_vac * 1e-9 / L_c
-    sic_depth_dimless = (geom.l_vac - geom.l_sio2) * 1e-9 / L_c
     tip_z_dimless = geom.tip_height * 1e-9 / L_c
     tip_radius_dimless = geom.tip_radius * 1e-9 / L_c
-    tip_arc_angle = 75 * np.pi / 180  # Tip arc center angle
+    tip_arc_angle = 75 * np.pi / 180
     n_middle_points = geom.n_tip_arc_points
-    # Construct 2D axisymmetric geometry with SplineGeometry
+
     geo = SplineGeometry()
 
-    # Define points (on center axis r=0)
-    p1 = geo.AppendPoint(0, -sic_depth_dimless - sio2_depth_dimless)  # SiC bottom
-    p2 = geo.AppendPoint(0, -sio2_depth_dimless)  # SiC/SiO2 interface
-    origin = geo.AppendPoint(0, 0)  # SiO2/vacuum interface (origin)
+    # Axis points
+    p1 = geo.AppendPoint(0, -diamond_depth_dimless)
+    origin = geo.AppendPoint(0, 0)
 
-    # Tip of the probe
-    tip1 = geo.AppendPoint(0, tip_z_dimless)  # Tip bottom (arc start point)
-
-    # Tip arc end point
+    # Tip geometry on axis
+    tip1 = geo.AppendPoint(0, tip_z_dimless)
     tip2 = geo.AppendPoint(
         tip_radius_dimless * np.sin(tip_arc_angle),
         tip_z_dimless + tip_radius_dimless * (1 - np.cos(tip_arc_angle)),
     )
-
-    # Tip arc middle points (for spline3)
     tipMlst = [
         geo.AppendPoint(
             tip_radius_dimless * np.sin(mid_angle),
@@ -206,8 +232,6 @@ def create_mesh(geom: GeometricParameters):
         )
         for mid_angle in np.linspace(0, tip_arc_angle, n_middle_points + 2)[1:-1]
     ]
-
-    # Tip cone end point
     tip3 = geo.AppendPoint(
         tip_radius_dimless * np.sin(tip_arc_angle)
         + (
@@ -219,81 +243,56 @@ def create_mesh(geom: GeometricParameters):
         vac_depth_dimless,
     )
 
-    # Far field boundary points
-    q1 = geo.AppendPoint(
-        R_dimless, -sic_depth_dimless - sio2_depth_dimless
-    )  # SiC bottom right
-    q2 = geo.AppendPoint(R_dimless, -sio2_depth_dimless)  # SiC/SiO2 interface right
-    q3 = geo.AppendPoint(R_dimless, 0)  # SiO2/vacuum interface right
-    q4 = geo.AppendPoint(R_dimless, vac_depth_dimless)  # Vacuum layer top
+    # Far-field points
+    q1 = geo.AppendPoint(R_dimless, -diamond_depth_dimless)
+    q2 = geo.AppendPoint(R_dimless, 0)
+    q3 = geo.AppendPoint(R_dimless, vac_depth_dimless)
 
-    # Boundary definitions (strictly follow the pattern in ref.py)
-    # Important: Define all boundaries once, and specify shared boundaries with leftdomain/rightdomain
-
-    # Bottom rectangle (SiC, domain=1): p1 → p2 → q2 → q1 → p1
-    geo.Append(["line", p1, p2], bc="axis", leftdomain=0, rightdomain=1, maxh=5)
-    geo.Append(["line", p2, q2], bc="sic/sio2", leftdomain=2, rightdomain=1, maxh=1)
+    # Diamond domain (material 1)
+    geo.Append(["line", p1, origin], bc="axis", leftdomain=0, rightdomain=1, maxh=5)
+    geo.Append(
+        ["line", origin, q2], bc="diamond/vacuum", leftdomain=2, rightdomain=1, maxh=0.5
+    )
     geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
     geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
 
-    # Middle rectangle (SiO2, domain=2): p2 → origin → q3 → q2
-    # p2→q2 is already defined
-    geo.Append(["line", origin, p2], bc="axis", leftdomain=2, rightdomain=0, maxh=0.5)
-    geo.Append(["line", q2, q3], bc="far-field", leftdomain=2, rightdomain=0)
-    geo.Append(["line", q3, origin], bc="sio2/vacuum", leftdomain=2, rightdomain=3)
-
-    # Top with tip (vacuum, domain=3): origin → tip1 → tip2 → tip3 → q4 → q3
-    geo.Append(["line", origin, tip1], bc="axis", leftdomain=0, rightdomain=3, maxh=0.5)
+    # Vacuum domain (material 2)
+    geo.Append(["line", origin, tip1], bc="axis", leftdomain=0, rightdomain=2, maxh=0.5)
     for i in range(0, len(tipMlst), 2):
         points = [
             tip1 if i == 0 else tipMlst[i - 1],
             tipMlst[i],
             tip2 if i == len(tipMlst) - 1 else tipMlst[i + 1],
         ]
-        geo.Append(
-            ["spline3", *points], bc="tip", leftdomain=0, rightdomain=3, maxh=0.5
-        )
-    geo.Append(["line", tip2, tip3], bc="tip", leftdomain=0, rightdomain=3)
-    geo.Append(["line", tip3, q4], bc="top", leftdomain=0, rightdomain=3)
-    geo.Append(["line", q4, q3], bc="far-field", leftdomain=0, rightdomain=3)
-    # O→q3 is already defined
+        geo.Append(["spline3", *points], bc="tip", leftdomain=0, rightdomain=2, maxh=0.5)
+    geo.Append(["line", tip2, tip3], bc="tip", leftdomain=0, rightdomain=2)
+    geo.Append(["line", tip3, q3], bc="top", leftdomain=0, rightdomain=2)
+    geo.Append(["line", q3, q2], bc="far-field", leftdomain=0, rightdomain=2)
 
-    # Define materials
-    geo.SetMaterial(1, "sic")
-    geo.SetMaterial(2, "sio2")
-    geo.SetMaterial(3, "vac")
+    geo.SetMaterial(1, "diamond")
+    geo.SetMaterial(2, "vac")
 
-    # Debug output of geometry information
     logger.info("Geometry defined with:")
     logger.info(f"  - Domain radius: {R_dimless:.2f}")
-    logger.info(f"  - SiC depth: {sic_depth_dimless:.2f}")
-    logger.info(f"  - SiO2 thickness: {sio2_depth_dimless:.2f}")
+    logger.info(f"  - Diamond depth: {diamond_depth_dimless:.2f}")
     logger.info(f"  - Vacuum height: {vac_depth_dimless:.2f}")
     logger.info(f"  - Tip radius: {tip_radius_dimless:.2f}")
     logger.info(f"  - Tip height: {tip_z_dimless:.2f}")
 
-    # Check number of points and segments
     logger.info("Checking geometry integrity...")
     logger.info(
-        f"  - Number of points defined: {len([p1, p2, origin, tip1, *tipMlst, tip2, tip3, q1, q2, q3, q4])}"
+        f"  - Number of points defined: {len([p1, origin, tip1, *tipMlst, tip2, tip3, q1, q2, q3])}"
     )
 
     logger.info("Starting mesh generation...")
     logger.info("  (This may take a while for complex geometries...)")
 
-    # Mesh size control
+    geo.SetDomainMaxH(1, 5.0)
+    geo.SetDomainMaxH(2, 2.0)
 
-    # Set mesh size for each domain
-    # geo.SetDomainMaxH(1, 5.0)  # SiC
-    geo.SetDomainMaxH(2, 2)  # SiO2
-    # geo.SetDomainMaxH(3, 1.0)  # Vacuum
-
-    # Mesh generation (global maximum element size)
-    # The area around the tip tends to become finer automatically
     ngmesh = geo.GenerateMesh(maxh=10, grading=0.2)
     logger.info("Mesh generation completed")
 
-    # Convert to NGSolve mesh object
     mesh = ng.Mesh(ngmesh)
 
     logger.info(f"Mesh generated with {mesh.ne} elements and {mesh.nv} vertices")
@@ -320,7 +319,7 @@ def run_fem_simulation(
     u = ng.GridFunction(fes, name="potential_dimless")
 
     # Define relative permittivity
-    epsilon_r = ng.CoefficientFunction([phys.eps_sic, phys.eps_sio2, phys.eps_vac])
+    epsilon_r = ng.CoefficientFunction([phys.eps_diamond, phys.eps_vac])
 
     # Homotopy parameters
     homotopy_charge = ng.Parameter(0.0)
@@ -377,8 +376,7 @@ def _setup_weak_form(
     Ef_dimless = phys.Ef / V_c
     Ec_dimless = phys.Ec / V_c
     Ev_dimless = phys.Ev / V_c
-    Edh_dimless = phys.Edh / V_c
-    Edc_dimless = phys.Edc / V_c
+    Ea_dimless = phys.Ea / V_c
 
     lambda_ff = 1 / (geom.region_radius * 1e-9 / L_c)
     sigma_s_target = (phys.sigma_s * const.e * L_c) / (const.epsilon_0 * V_c)
@@ -392,8 +390,7 @@ def _setup_weak_form(
                 "Ef_dimless": Ef_dimless,
                 "Ec_dimless": Ec_dimless,
                 "Ev_dimless": Ev_dimless,
-                "Edh_dimless": Edh_dimless,
-                "Edc_dimless": Edc_dimless,
+                "Ea_dimless": Ea_dimless,
                 "lambda_ff": lambda_ff,
                 "sigma_s_target": sigma_s_target,
                 "Feenstra": Feenstra,
@@ -412,45 +409,80 @@ def _setup_weak_form(
         x_clip = clamp(x, clip_exp)
         return ng.exp(x_clip)
 
+    # def fermi_dirac_half(x):
+    #     x_clip = clamp(x, clip_exp)
+    #     high = (2 / np.sqrt(np.pi)) * (
+    #         (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
+    #     )
+    #     low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
+    #     return ng.IfPos(x_clip - 25.0, high, low)
+
     def fermi_dirac_half(x):
-        x_clip = clamp(x, clip_exp)
-        high = (2 / np.sqrt(np.pi)) * (
-            (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
-        )
-        low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
-        return ng.IfPos(x_clip - 25.0, high, low)
+        """
+        Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
+        by Aymerich-Humet et al. (1981), implemented for NGSolve.
+        """
+        
+        # Aymerich-Humet 近似 (F_1/2) のための定数
+        a1 = 6.316
+        a2 = 12.92
+        C_deg = 0.75224956896  # 4 / (3 * np.sqrt(np.pi))
+
+        # 1. 非縮退領域 (x < -10.0) の近似: F_1/2(x) \approx exp(x)
+        #    safe_exp は x を clamp(x, clip_exp) してから ng.exp() する
+        boltzmann_approx = safe_exp(x)
+
+        # 2. 全領域の近似: F_1/2(x) \approx [exp(-x) + G(x)^-1]^-1
+        
+        # 2a. exp(-x) の項
+        #     safe_exp(-x) は -x を clamp する (x を [-clip_exp, clip_exp] にクランプ)
+        exp_neg_x = safe_exp(-x)
+        
+        # 2b. G(x)^-1 の項
+        #     多項式 (x^2 + a1*x + a2) は x >= -4.0 で定義されているため
+        #     x_safe = max(x, -4.0) を ng.IfPos で実装
+        x_safe = ng.IfPos(x - (-4.0), x, -4.0)
+        
+        G_inv_denominator = C_deg * (
+            x_safe**2 + a1 * x_safe + a2
+        )**0.75
+        
+        # G(x)^-1 を計算 (多項式は x >= -4 で常に正なのでゼロ除算の心配はない)
+        G_inv = G_inv_denominator**(-1.0)
+        
+        # 2c. 全領域の近似式を結合
+        full_approx = (exp_neg_x + G_inv)**(-1.0)
+
+        # 3. x = -10.0 を境に、非縮退近似と全領域近似を切り替える
+        #    これにより、x が非常に小さい負の値のときの数値的安定性を確保する
+        return ng.IfPos(x - (-10.0), full_approx, boltzmann_approx)
 
     u_clip = clamp(uh, clip_potential)
 
-    # Nonlinear charge density terms (at SiC region)
+    # Nonlinear charge density terms (within the diamond region)
     if Feenstra:
         n_term = C0 * phys.Nc * fermi_dirac_half((Ef_dimless - Ec_dimless) + u_clip)
         p_term = C0 * phys.Nv * fermi_dirac_half((Ev_dimless - Ef_dimless) - u_clip)
         if assume_full_ionization:
-            # Boltzmann approximation (complete ionization)
-            Ndp_term = C0 * phys.Nd  # Fully ionized
+            Na_term = C0 * phys.Na
         else:
-            # Ionized donor density for each site
-            Ndp_h_term = (
-                C0 * phys.Nd_h / (1 + 2 * safe_exp((Ef_dimless - Edh_dimless) + u_clip))
-            )
-            Ndp_c_term = (
-                C0 * phys.Nd_c / (1 + 2 * safe_exp((Ef_dimless - Edc_dimless) + u_clip))
-            )
-            Ndp_term = Ndp_h_term + Ndp_c_term
-    else:  # Boltzmann approximation (complete ionization)
+            Na_term = C0 * phys.Na / (1 + phys.g_a * safe_exp((Ea_dimless - Ef_dimless) - u_clip))
+    else:
         n_term = C0 * phys.n0 * safe_exp(u_clip)
         p_term = C0 * phys.p0 * safe_exp(-u_clip)
-        Ndp_term = C0 * phys.Nd  # Fully ionized
-    rho_dimless = homotopy_charge * (p_term + Ndp_term - n_term)
+        if assume_full_ionization:
+            Na_term = C0 * phys.Na
+        else:
+            Na_term = C0 * phys.Na / (1 + phys.g_a * safe_exp((Ea_dimless - Ef_dimless) - u_clip))
+    rho_dimless = homotopy_charge * (p_term - n_term - Na_term)
 
     sigma_s_dimless = homotopy_sigma * sigma_s_target
 
     a = ng.BilinearForm(fes, symmetric=False)
     a += epsilon_r * ng.grad(uh) * ng.grad(vh) * r * ng.dx
     a += epsilon_r * lambda_ff * uh * vh * r * ng.ds("far-field")
-    a += -rho_dimless * vh * r * ng.dx(definedon=msh.Materials("sic"))
-    a += -sigma_s_dimless * vh * r * ng.ds("sic/sio2")
+    a += -rho_dimless * vh * r * ng.dx(definedon=msh.Materials("diamond"))
+    a += -sigma_s_dimless * vh * r * ng.ds("diamond/vacuum")
 
     return a
 
@@ -699,18 +731,24 @@ def main():
         "--tip_height", type=float, default=8.0, help="Tip-sample distance in nm."
     )
     parser.add_argument(
-        "--l_sio2", type=float, default=5.0, help="Thickness of SiO2 layer in nm."
-    )
-    parser.add_argument(
-        "--Nd", type=float, default=1e16, help="Donor concentration in cm^-3."
+        "--diamond_thickness",
+        type=float,
+        default=200.0,
+        help="Thickness of the diamond layer in nm.",
     )
     parser.add_argument(
         "--sigma_s",
         type=float,
-        default=1e12,
-        help="Surface charge density at SiC/SiO2 interface in cm^-2.",
+        default=0.0,
+        help="Surface charge density at the diamond/vacuum interface in cm^-2.",
     )
     parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
+    parser.add_argument(
+        "--Na",
+        type=float,
+        default=1.3e17,
+        help="Acceptor concentration (boron) in cm^-3.",
+    )
     parser.add_argument(
         "--out_dir", type=str, default="out", help="Output directory for results."
     )
@@ -758,25 +796,23 @@ def main():
     start = datetime.now()
     logger.info(f"Started simulation at {start}")
 
-    if args.model.lower().startswith("b") and args.assume_full_ionization:
-        logger.warning(
-            "Boltzmann model always assumes full ionization; --assume_full_ionization has no effect."
-        )
-
     # Initialize physical parameters (convert units to m^-3, m^-2)
     phys_params = PhysicalParameters(
         T=args.T,
-        Nd=args.Nd * 1e6,  # cm^-3 -> m^-3
+        Na=args.Na * 1e6,  # cm^-3 -> m^-3
         sigma_s=args.sigma_s * 1e4,  # cm^-2 -> m^-2
     )
 
     # Calculate Fermi level
     Ef = find_fermi_level(phys_params, args.out_dir, plot=args.plot_fermi)
     phys_params.Ef = Ef
+    phys_params.update_equilibrium_densities()
 
     # Initialize geometric parameters
     geom_params = GeometricParameters(
-        l_sio2=args.l_sio2, tip_radius=args.tip_radius, tip_height=args.tip_height
+        diamond_thickness=args.diamond_thickness,
+        tip_radius=args.tip_radius,
+        tip_height=args.tip_height,
     )
 
     # Save parameters to JSON file
