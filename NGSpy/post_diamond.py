@@ -97,8 +97,6 @@ def main():
         ),
     )
     print(f"Saved 2D potential profile data to {potential_dir}")
-
-    return
     
     # --- 2D Potential Plot ---
     print("Creating 2D potential plot...")

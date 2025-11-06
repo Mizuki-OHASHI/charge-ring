@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import mpl_backend_ssh  # noqa: F401
 
-
-
 def load_experimental_data():
     data_Vtip_sweep = np.loadtxt(
         "diamond_data_6B3645/exp_data_diamond_6B3645.csv",
@@ -44,7 +42,7 @@ def main():
     ring_z = -5.0
 
     fixed_Vtip = 2.0
-    fixed_Htip = 8.0
+    fixed_Htip = 5.5
     fixed_Vtip_idx = np.abs(Vtip_values - fixed_Vtip).argmin()
     fixed_Htip_idx = np.abs(Htip_values - fixed_Htip).argmin()
 
