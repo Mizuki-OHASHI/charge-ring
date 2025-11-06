@@ -51,6 +51,55 @@ def main():
     L_c = geom_params.L_c  # [m]
     msh, u_dimless, _ = load_results(out_dir, geom_params, V_c)
 
+    print("Creating 2D potential profile grid (1 nm spacing)...")
+    r_nm_values = np.linspace(0.0, 200.0, 201)
+    z_nm_values = np.linspace(-100.0, 0.0, 101)
+    potential_grid = np.full((len(z_nm_values), len(r_nm_values)), np.nan)
+
+    r_dimless_values = (r_nm_values * 1e-9) / L_c
+    z_dimless_values = (z_nm_values * 1e-9) / L_c
+
+    for zi, z_dimless in enumerate(z_dimless_values):
+        for ri, r_dimless in enumerate(r_dimless_values):
+            try:
+                potential_grid[zi, ri] = (
+                    u_dimless(msh(r_dimless, z_dimless)) * V_c
+                )
+            except Exception:
+                continue
+
+    potential_dir = os.path.join(out_dir, "potential_2d_profile")
+    os.makedirs(potential_dir, exist_ok=True)
+
+    np.savetxt(
+        os.path.join(potential_dir, "r.txt"),
+        np.column_stack(
+            (np.arange(len(r_nm_values), dtype=int), r_nm_values)
+        ),
+        fmt=["%d", "%.6f"],
+        header="r_idx r_nm",
+    )
+    np.savetxt(
+        os.path.join(potential_dir, "z.txt"),
+        np.column_stack(
+            (np.arange(len(z_nm_values), dtype=int), z_nm_values)
+        ),
+        fmt=["%d", "%.6f"],
+        header="z_idx z_nm",
+    )
+    np.savetxt(
+        os.path.join(potential_dir, "potential.txt"),
+        potential_grid,
+        fmt="%.9e",
+        header=(
+            "Potential (V); rows follow z_idx (z from -50 nm to 0 nm), "
+            "columns follow r_idx (r from 0 nm to 100 nm)"
+        ),
+    )
+    print(f"Saved 2D potential profile data to {potential_dir}")
+
+    return
+    
     # --- 2D Potential Plot ---
     print("Creating 2D potential plot...")
 
