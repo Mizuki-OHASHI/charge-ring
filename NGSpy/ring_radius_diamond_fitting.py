@@ -1,7 +1,9 @@
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import mpl_backend_ssh  # noqa: F401
+
 
 def load_experimental_data():
     data_Vtip_sweep = np.loadtxt(
@@ -17,9 +19,7 @@ def load_experimental_data():
     return data_Vtip_sweep, data_Htip_sweep
 
 
-def load_simulation_data(
-    cache_path="_ring_radius_cache/outputs_diamond+20251105_180001.npz",
-):
+def load_simulation_data(cache_path):
     data = np.load(cache_path)
     Vtip_values = data["Vtip"]
     Rtip_values = data["Rtip"]
@@ -31,8 +31,14 @@ def load_simulation_data(
 
 
 def main():
+    if len(sys.argv) <= 1:
+        print("Usage: python ring_radius_diamond_fitting.py <cache_path>")
+        sys.exit(1)
+    sim_path = sys.argv[1]
     exp_Vtip_sweep, exp_Htip_sweep = load_experimental_data()
-    Vtip_values, Rtip_values, Htip_values, z, r, potentials = load_simulation_data()
+    Vtip_values, Rtip_values, Htip_values, z, r, potentials = load_simulation_data(
+        sim_path
+    )
     print(
         f"{Vtip_values.shape=}, {Rtip_values.shape=}, {Htip_values.shape=}, {z.shape=}, {r.shape=}, {potentials.shape=}"
     )
@@ -49,7 +55,7 @@ def main():
     def plot_with_params(tip_radius, ring_z):
         t_idx = np.abs(Rtip_values - tip_radius).argmin()
         z_idx = np.abs(z - ring_z).argmin()
-        
+
         data1 = potentials[:, t_idx, fixed_Htip_idx, z_idx].T * 1e3
         data2 = potentials[fixed_Vtip_idx, t_idx, :, z_idx].T * 1e3
         global_min = min(np.nanmin(data1), np.nanmin(data2))
@@ -95,15 +101,25 @@ def main():
     plt.subplots_adjust(bottom=0.25)
 
     # スライダーの位置と範囲を設定
-    axcolor = 'lightgoldenrodyellow'
+    axcolor = "lightgoldenrodyellow"
     ax_tip_radius = plt.axes([0.15, 0.1, 0.65, 0.03], facecolor=axcolor)
     ax_ring_z = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor=axcolor)
 
     slider_tip_radius = Slider(
-        ax_tip_radius, 'Tip Radius (nm)', float(Rtip_values.min()), float(Rtip_values.max()), valinit=tip_radius, valstep=(Rtip_values[1]-Rtip_values[0])
+        ax_tip_radius,
+        "Tip Radius (nm)",
+        float(Rtip_values.min()),
+        float(Rtip_values.max()),
+        valinit=tip_radius,
+        valstep=(Rtip_values[1] - Rtip_values[0]),
     )
     slider_ring_z = Slider(
-        ax_ring_z, 'Ring Z (nm)', float(z.min()), float(z.max()), valinit=ring_z, valstep=(z[1]-z[0])
+        ax_ring_z,
+        "Ring Z (nm)",
+        float(z.min()),
+        float(z.max()),
+        valinit=ring_z,
+        valstep=(z[1] - z[0]),
     )
 
     def update(val):

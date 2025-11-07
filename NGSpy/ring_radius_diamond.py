@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
         if not os.path.exists("_ring_radius_cache"):
             os.makedirs("_ring_radius_cache")
-        cache_path = f"_ring_radius_cache/{dir_path.replace('/', '+')}.npz"
+        cache_path = f"_ring_radius_cache/{dir_path.replace('./', '').replace('/', '+')}.npz"
         Vtip_values = np.array(Vtip_values)
         Rtip_values = np.array(Rtip_values)
         Htip_values = np.array(Htip_values)

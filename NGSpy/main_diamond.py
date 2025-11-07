@@ -746,7 +746,7 @@ def main():
     parser.add_argument(
         "--Na",
         type=float,
-        default=1.3e17,
+        default=6e16,
         help="Acceptor concentration (boron) in cm^-3.",
     )
     parser.add_argument(
