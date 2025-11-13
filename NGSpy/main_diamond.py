@@ -59,15 +59,17 @@ class PhysicalParameters:
         mt = self.m_e_transverse_ratio * m0
         self.m_e_eff = (ml * mt**2) ** (1 / 3)
         self.m_h_eff = (
-            (self.m_h_heavy_ratio ** (3 / 2) + self.m_h_light_ratio ** (3 / 2))
-            ** (2 / 3)
-            * m0
-        )
+            self.m_h_heavy_ratio ** (3 / 2) + self.m_h_light_ratio ** (3 / 2)
+        ) ** (2 / 3) * m0
 
-        self.Nc = 6 * 2 * (2 * np.pi * self.m_e_eff * const.k * self.T / (const.h**2)) ** 1.5
+        self.Nc = (
+            6 * 2 * (2 * np.pi * self.m_e_eff * const.k * self.T / (const.h**2)) ** 1.5
+        )
         # TODO: `6 *`: ダイヤモンドの伝導帯は6つの等価な谷を持つため
 
-        self.Nv = 2 * (2 * np.pi * self.m_h_eff * const.k * self.T / (const.h**2)) ** 1.5
+        self.Nv = (
+            2 * (2 * np.pi * self.m_h_eff * const.k * self.T / (const.h**2)) ** 1.5
+        )
         self.Ev = 0.0
         self.Ec = self.Ev + self.Eg
         self.Ea = self.Ev + self.Ea_offset
@@ -76,7 +78,9 @@ class PhysicalParameters:
         """Update equilibrium carrier and ionized acceptor densities"""
         self.p0 = self.Nv * np.exp((self.Ev - self.Ef) / self.kTeV)
         self.n0 = self.Nc * np.exp((self.Ef - self.Ec) / self.kTeV)
-        self.Na_minus0 = self.Na / (1 + self.g_a * np.exp((self.Ea - self.Ef) / self.kTeV))
+        self.Na_minus0 = self.Na / (
+            1 + self.g_a * np.exp((self.Ea - self.Ef) / self.kTeV)
+        )
 
 
 @dataclass
@@ -85,6 +89,7 @@ class GeometricParameters:
 
     L_c: float = 1e-9  # Characteristic length [1 nm]
     diamond_thickness: float = 200.0  # Diamond layer thickness [nm]
+    virtual_layer_thickness: float = 5.0  # Virtual layer thickness [nm]
     tip_radius: float = 45.0  # Tip curvature radius [nm]
     tip_height: float = 8.0  # Distance from tip to sample [nm]
     l_vac: float = 200.0  # Vacuum layer thickness [nm]
@@ -107,20 +112,21 @@ class GeometricParameters:
 #         ],
 #     )
 
+
 def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
     """
     Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
     by Aymerich-Humet et al. (1981).
-    
+
     This approximation is continuous and accurate across all regimes,
     transitioning smoothly from the Boltzmann limit (exp(x) for x << 0)
     to the degenerate limit (Sommerfeld expansion, first-order term).
     """
-    
+
     # Aymerich-Humet et al. (1981) approximation parameters
     a1 = 6.316
     a2 = 12.92
-    
+
     # Pre-factor for the degenerate limit (4 / (3 * sqrt(pi)))
     C_deg = 0.75224956896
 
@@ -129,10 +135,11 @@ def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
         [x < -10.0],  # Non-degenerate regime
         [
             lambda x: np.exp(x),
-            lambda x: 1.0 / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2)**0.75)**(-1.0))
-        ]
+            lambda x: 1.0
+            / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2) ** 0.75) ** (-1.0)),
+        ],
     )
-    
+
     return result
 
 
@@ -207,6 +214,7 @@ def create_mesh(geom: GeometricParameters):
     L_c = geom.L_c
     R_dimless = geom.region_radius * 1e-9 / L_c
     diamond_depth_dimless = geom.diamond_thickness * 1e-9 / L_c
+    virtual_layer_thickness_dimless = geom.virtual_layer_thickness * 1e-9 / L_c
     vac_depth_dimless = geom.l_vac * 1e-9 / L_c
     tip_z_dimless = geom.tip_height * 1e-9 / L_c
     tip_radius_dimless = geom.tip_radius * 1e-9 / L_c
@@ -217,6 +225,7 @@ def create_mesh(geom: GeometricParameters):
 
     # Axis points
     p1 = geo.AppendPoint(0, -diamond_depth_dimless)
+    p1m = geo.AppendPoint(0, -virtual_layer_thickness_dimless)
     origin = geo.AppendPoint(0, 0)
 
     # Tip geometry on axis
@@ -245,16 +254,32 @@ def create_mesh(geom: GeometricParameters):
 
     # Far-field points
     q1 = geo.AppendPoint(R_dimless, -diamond_depth_dimless)
+    q1m = geo.AppendPoint(R_dimless, -virtual_layer_thickness_dimless)
     q2 = geo.AppendPoint(R_dimless, 0)
     q3 = geo.AppendPoint(R_dimless, vac_depth_dimless)
 
     # Diamond domain (material 1)
-    geo.Append(["line", p1, origin], bc="axis", leftdomain=0, rightdomain=1, maxh=5)
+    geo.Append(["line", p1, p1m], bc="axis", leftdomain=0, rightdomain=1, maxh=5)
     geo.Append(
-        ["line", origin, q2], bc="diamond/vacuum", leftdomain=2, rightdomain=1, maxh=1
+        ["line", p1m, q1m],
+        bc="diamond/diamond-virtual",
+        leftdomain=3,
+        rightdomain=1,
+        maxh=0.5,
     )
-    geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
+    geo.Append(["line", q1m, q1], bc="far-field", leftdomain=0, rightdomain=1)
     geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
+
+    # Diamond virtual layer near surface (material 3)
+    geo.Append(["line", p1m, origin], bc="axis", leftdomain=0, rightdomain=3, maxh=0.5)
+    geo.Append(
+        ["line", origin, q2],
+        bc="diamond-virtual/vacuum",
+        leftdomain=2,
+        rightdomain=3,
+        maxh=0.5,
+    )
+    geo.Append(["line", q2, q1m], bc="far-field", leftdomain=0, rightdomain=3)
 
     # Vacuum domain (material 2)
     geo.Append(["line", origin, tip1], bc="axis", leftdomain=0, rightdomain=2, maxh=0.5)
@@ -264,13 +289,16 @@ def create_mesh(geom: GeometricParameters):
             tipMlst[i],
             tip2 if i == len(tipMlst) - 1 else tipMlst[i + 1],
         ]
-        geo.Append(["spline3", *points], bc="tip", leftdomain=0, rightdomain=2, maxh=0.5)
+        geo.Append(
+            ["spline3", *points], bc="tip", leftdomain=0, rightdomain=2, maxh=0.5
+        )
     geo.Append(["line", tip2, tip3], bc="tip", leftdomain=0, rightdomain=2)
     geo.Append(["line", tip3, q3], bc="top", leftdomain=0, rightdomain=2)
     geo.Append(["line", q3, q2], bc="far-field", leftdomain=0, rightdomain=2)
 
     geo.SetMaterial(1, "diamond")
     geo.SetMaterial(2, "vac")
+    geo.SetMaterial(3, "diamond-virtual")
 
     logger.info("Geometry defined with:")
     logger.info(f"  - Domain radius: {R_dimless:.2f}")
@@ -278,6 +306,7 @@ def create_mesh(geom: GeometricParameters):
     logger.info(f"  - Vacuum height: {vac_depth_dimless:.2f}")
     logger.info(f"  - Tip radius: {tip_radius_dimless:.2f}")
     logger.info(f"  - Tip height: {tip_z_dimless:.2f}")
+    logger.info(f"  - Virtual layer thickness: {virtual_layer_thickness_dimless:.2f}")
 
     logger.info("Checking geometry integrity...")
     logger.info(
@@ -289,6 +318,7 @@ def create_mesh(geom: GeometricParameters):
 
     # geo.SetDomainMaxH(1, 5.0)
     # geo.SetDomainMaxH(2, 2.0)
+    geo.SetDomainMaxH(3, 0.5)
 
     ngmesh = geo.GenerateMesh(maxh=10, grading=0.2)
     logger.info("Mesh generation completed")
@@ -319,7 +349,13 @@ def run_fem_simulation(
     u = ng.GridFunction(fes, name="potential_dimless")
 
     # Define relative permittivity
-    epsilon_r = ng.CoefficientFunction([phys.eps_diamond, phys.eps_vac])
+    epsilon_r = ng.CoefficientFunction(
+        [
+            phys.eps_diamond,  # 1: diamond
+            phys.eps_vac,  # 2: vacuum
+            phys.eps_diamond,  # 3: diamond-virtual
+        ]
+    )
 
     # Homotopy parameters
     homotopy_charge = ng.Parameter(0.0)
@@ -422,7 +458,7 @@ def _setup_weak_form(
         Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
         by Aymerich-Humet et al. (1981), implemented for NGSolve.
         """
-        
+
         # Aymerich-Humet 近似 (F_1/2) のための定数
         a1 = 6.316
         a2 = 12.92
@@ -433,25 +469,23 @@ def _setup_weak_form(
         boltzmann_approx = safe_exp(x)
 
         # 2. 全領域の近似: F_1/2(x) \approx [exp(-x) + G(x)^-1]^-1
-        
+
         # 2a. exp(-x) の項
         #     safe_exp(-x) は -x を clamp する (x を [-clip_exp, clip_exp] にクランプ)
         exp_neg_x = safe_exp(-x)
-        
+
         # 2b. G(x)^-1 の項
         #     多項式 (x^2 + a1*x + a2) は x >= -4.0 で定義されているため
         #     x_safe = max(x, -4.0) を ng.IfPos で実装
         x_safe = ng.IfPos(x - (-4.0), x, -4.0)
-        
-        G_inv_denominator = C_deg * (
-            x_safe**2 + a1 * x_safe + a2
-        )**0.75
-        
+
+        G_inv_denominator = C_deg * (x_safe**2 + a1 * x_safe + a2) ** 0.75
+
         # G(x)^-1 を計算 (多項式は x >= -4 で常に正なのでゼロ除算の心配はない)
-        G_inv = G_inv_denominator**(-1.0)
-        
+        G_inv = G_inv_denominator ** (-1.0)
+
         # 2c. 全領域の近似式を結合
-        full_approx = (exp_neg_x + G_inv)**(-1.0)
+        full_approx = (exp_neg_x + G_inv) ** (-1.0)
 
         # 3. x = -10.0 を境に、非縮退近似と全領域近似を切り替える
         #    これにより、x が非常に小さい負の値のときの数値的安定性を確保する
@@ -466,14 +500,22 @@ def _setup_weak_form(
         if assume_full_ionization:
             Na_term = C0 * phys.Na
         else:
-            Na_term = C0 * phys.Na / (1 + phys.g_a * safe_exp((Ea_dimless - Ef_dimless) - u_clip))
+            Na_term = (
+                C0
+                * phys.Na
+                / (1 + phys.g_a * safe_exp((Ea_dimless - Ef_dimless) - u_clip))
+            )
     else:
         n_term = C0 * phys.n0 * safe_exp(u_clip)
         p_term = C0 * phys.p0 * safe_exp(-u_clip)
         if assume_full_ionization:
             Na_term = C0 * phys.Na
         else:
-            Na_term = C0 * phys.Na / (1 + phys.g_a * safe_exp((Ea_dimless - Ef_dimless) - u_clip))
+            Na_term = (
+                C0
+                * phys.Na
+                / (1 + phys.g_a * safe_exp((Ea_dimless - Ef_dimless) - u_clip))
+            )
     rho_dimless = homotopy_charge * (p_term - n_term - Na_term)
 
     sigma_s_dimless = homotopy_sigma * sigma_s_target
@@ -482,7 +524,7 @@ def _setup_weak_form(
     a += epsilon_r * ng.grad(uh) * ng.grad(vh) * r * ng.dx
     a += epsilon_r * lambda_ff * uh * vh * r * ng.ds("far-field")
     a += -rho_dimless * vh * r * ng.dx(definedon=msh.Materials("diamond"))
-    a += -sigma_s_dimless * vh * r * ng.ds("diamond/vacuum")
+    a += -sigma_s_dimless * vh * r * ng.ds("diamond-virtual/vacuum")
 
     return a
 
@@ -575,7 +617,7 @@ def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
     newton_kwargs = dict(
         freedofs=freedofs,
         maxit=100,
-        maxerr=1e-11,
+        maxerr=1e-10,
         inverse="sparsecholesky",
         dampfactor=0.7,
         printing=False,

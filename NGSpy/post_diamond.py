@@ -9,6 +9,7 @@ from ngsolve import VOL
 
 from main_diamond import GeometricParameters, PhysicalParameters, load_results
 
+
 def exp_clamped(x, limit=100.0):
     return np.exp(np.clip(x, -limit, limit))
 
@@ -26,11 +27,16 @@ def main():
         action="store_true",
         help="Plot charge density profile",
     )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=150,
+    )
     args, _ = parser.parse_known_args()
     out_dir = args.out_dir
     plot_acceptor_ionization = args.plot_acceptor_ionization
     plot_charge_density = args.plot_charge_density
-
+    dpi = args.dpi
     print(f"Post-processing results in {out_dir}...")
     if not os.path.exists(out_dir):
         raise FileNotFoundError(f"Output directory {out_dir} does not exist.")
@@ -62,9 +68,7 @@ def main():
     for zi, z_dimless in enumerate(z_dimless_values):
         for ri, r_dimless in enumerate(r_dimless_values):
             try:
-                potential_grid[zi, ri] = (
-                    u_dimless(msh(r_dimless, z_dimless)) * V_c
-                )
+                potential_grid[zi, ri] = u_dimless(msh(r_dimless, z_dimless)) * V_c
             except Exception:
                 continue
 
@@ -73,17 +77,13 @@ def main():
 
     np.savetxt(
         os.path.join(potential_dir, "r.txt"),
-        np.column_stack(
-            (np.arange(len(r_nm_values), dtype=int), r_nm_values)
-        ),
+        np.column_stack((np.arange(len(r_nm_values), dtype=int), r_nm_values)),
         fmt=["%d", "%.6f"],
         header="r_idx r_nm",
     )
     np.savetxt(
         os.path.join(potential_dir, "z.txt"),
-        np.column_stack(
-            (np.arange(len(z_nm_values), dtype=int), z_nm_values)
-        ),
+        np.column_stack((np.arange(len(z_nm_values), dtype=int), z_nm_values)),
         fmt=["%d", "%.6f"],
         header="z_idx z_nm",
     )
@@ -97,7 +97,7 @@ def main():
         ),
     )
     print(f"Saved 2D potential profile data to {potential_dir}")
-    
+
     # --- 2D Potential Plot ---
     print("Creating 2D potential plot...")
 
@@ -152,7 +152,7 @@ def main():
     ax1.set_xlim(0, r_max)
     ax1.set_ylim(z_min, z_max)
     fig1.tight_layout()
-    fig1.savefig(os.path.join(out_dir, "potential_2d_plot.png"), dpi=300)
+    fig1.savefig(os.path.join(out_dir, "potential_2d_plot.png"), dpi=dpi * 2)
     print(f"Saved 2D plot to {os.path.join(out_dir, 'potential_2d_plot.png')}")
 
     # --- Line Profile Plots ---
@@ -211,7 +211,7 @@ def main():
     ax2_r.grid(True)
 
     fig2.tight_layout()
-    fig2.savefig(os.path.join(out_dir, "potential_line_profiles.png"), dpi=150)
+    fig2.savefig(os.path.join(out_dir, "potential_line_profiles.png"), dpi=dpi)
     print(
         f"Saved line profiles to {os.path.join(out_dir, 'potential_line_profiles.png')}"
     )
@@ -310,9 +310,7 @@ def main():
             )
         ax3_r.set_xlabel("r (nm)")
         ax3_r.set_ylabel("Ionized Acceptor Density (cm$^{-3}$)")
-        ax3_r.set_title(
-            f"Acceptor Ionization Profile at z = {z_level_acceptor:.1f} nm"
-        )
+        ax3_r.set_title(f"Acceptor Ionization Profile at z = {z_level_acceptor:.1f} nm")
         ax3_r.legend()
         ax3_r.grid(True, alpha=0.3)
         if valid_r_acceptor:
@@ -320,7 +318,7 @@ def main():
 
         fig3.tight_layout()
         fig3.savefig(
-            os.path.join(out_dir, "acceptor_ionization_line_profiles.png"), dpi=150
+            os.path.join(out_dir, "acceptor_ionization_line_profiles.png"), dpi=dpi
         )
         print(
             f"Saved acceptor ionization profiles to {os.path.join(out_dir, 'acceptor_ionization_line_profiles.png')}"
@@ -356,9 +354,10 @@ def main():
                 return np.exp(eta)
 
             eta_safe = max(eta, -4.0)
-            G_inv_denominator = C_deg_aymerich * (
-                eta_safe**2 + a1_aymerich * eta_safe + a2_aymerich
-            ) ** 0.75
+            G_inv_denominator = (
+                C_deg_aymerich
+                * (eta_safe**2 + a1_aymerich * eta_safe + a2_aymerich) ** 0.75
+            )
             exp_neg_eta = np.exp(-eta)
 
             return 1.0 / (exp_neg_eta + (1.0 / G_inv_denominator))
@@ -444,8 +443,12 @@ def main():
         )
         ax4_z.set_xlabel("z (nm)")
         ax4_z.set_ylabel("Charge Density (cm$^{-3}$)")
-        ionization_status = "Full Ionization" if assume_full_ionization else "Partial Ionization"
-        ax4_z.set_title(f"Charge Density Profile along Center Axis (r=0)\n({ionization_status})")
+        ionization_status = (
+            "Full Ionization" if assume_full_ionization else "Partial Ionization"
+        )
+        ax4_z.set_title(
+            f"Charge Density Profile along Center Axis (r=0)\n({ionization_status})"
+        )
         ax4_z.legend()
         ax4_z.grid(True, which="both", alpha=0.3)
         if valid_z_charge:
@@ -486,9 +489,7 @@ def main():
             ax4_r.set_xlim(0, max(valid_r_charge))
 
         fig4.tight_layout()
-        fig4.savefig(
-            os.path.join(out_dir, "charge_density_line_profiles.png"), dpi=150
-        )
+        fig4.savefig(os.path.join(out_dir, "charge_density_line_profiles.png"), dpi=dpi)
         print(
             f"Saved charge density profiles to {os.path.join(out_dir, 'charge_density_line_profiles.png')}"
         )

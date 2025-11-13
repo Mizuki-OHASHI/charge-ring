@@ -172,13 +172,19 @@ if __name__ == "__main__":
         data = np.array(data)
         if not os.path.exists("_ring_radius_cache"):
             os.makedirs("_ring_radius_cache")
-        cache_path = f"_ring_radius_cache/{dir_path.replace('/', '+')}.npz"
+        cache_path = (
+            f"_ring_radius_cache/{dir_path.replace('./', '').replace('/', '+')}.npz"
+        )
+        Vtip_values = np.array(Vtip_values)
+        Rtip_values = np.array(Rtip_values)
+        Htip_values = np.array(Htip_values)
+        r = np.array(r)
         np.savez_compressed(
             cache_path,
-            Vtip=np.array(Vtip_values),
-            Rtip=np.array(Rtip_values),
-            Htip=np.array(Htip_values),
-            r=np.array(r),
+            Vtip=Vtip_values,
+            Rtip=Rtip_values,
+            Htip=Htip_values,
+            r=r,
             data=data,
         )
         print(f"Cached data to: {cache_path}")
@@ -219,13 +225,15 @@ if __name__ == "__main__":
             Htip_values,
             r,
             data,
-            example_Rtip,
-            example_Vring,
+            # example_Rtip,
+            # example_Vring,
         )
         if len(Vtip_values) > 0 and len(Htip_values) > 0:
             example_Vtip = Vtip_values[0]
             example_Htip = Htip_values[0]
-            example_result = ring_radius_func(example_Vtip, example_Htip)
+            example_result = ring_radius_func(
+                example_Rtip, example_Vring, example_Vtip, example_Htip
+            )
             print(
                 f"Example: Rtip={example_Rtip}, Vring={example_Vring}, Vtip={example_Vtip}, Htip={example_Htip}"
             )
