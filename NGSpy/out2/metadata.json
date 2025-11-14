@@ -1,7 +1,7 @@
 {
   "V_c": 0.025851999786435535,
   "Feenstra": true,
-  "ndof": 7985,
+  "ndof": 16540,
   "fes": "H1",
   "order": 1,
   "materials": [

@@ -105,20 +105,21 @@ class GeometricParameters:
 #         ],
 #     )
 
+
 def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
     """
     Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
     by Aymerich-Humet et al. (1981).
-    
+
     This approximation is continuous and accurate across all regimes,
     transitioning smoothly from the Boltzmann limit (exp(x) for x << 0)
     to the degenerate limit (Sommerfeld expansion, first-order term).
     """
-    
+
     # Aymerich-Humet et al. (1981) approximation parameters
     a1 = 6.316
     a2 = 12.92
-    
+
     # Pre-factor for the degenerate limit (4 / (3 * sqrt(pi)))
     C_deg = 0.75224956896
 
@@ -127,10 +128,11 @@ def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
         [x < -10.0],  # Non-degenerate regime
         [
             lambda x: np.exp(x),
-            lambda x: 1.0 / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2)**0.75)**(-1.0))
-        ]
+            lambda x: 1.0
+            / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2) ** 0.75) ** (-1.0)),
+        ],
     )
-    
+
     return result
 
 
@@ -461,7 +463,7 @@ def _setup_weak_form(
         Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
         by Aymerich-Humet et al. (1981), implemented for NGSolve.
         """
-        
+
         # Aymerich-Humet 近似 (F_1/2) のための定数
         a1 = 6.316
         a2 = 12.92
@@ -472,25 +474,23 @@ def _setup_weak_form(
         boltzmann_approx = safe_exp(x)
 
         # 2. 全領域の近似: F_1/2(x) \approx [exp(-x) + G(x)^-1]^-1
-        
+
         # 2a. exp(-x) の項
         #     safe_exp(-x) は -x を clamp する (x を [-clip_exp, clip_exp] にクランプ)
         exp_neg_x = safe_exp(-x)
-        
+
         # 2b. G(x)^-1 の項
         #     多項式 (x^2 + a1*x + a2) は x >= -4.0 で定義されているため
         #     x_safe = max(x, -4.0) を ng.IfPos で実装
         x_safe = ng.IfPos(x - (-4.0), x, -4.0)
-        
-        G_inv_denominator = C_deg * (
-            x_safe**2 + a1 * x_safe + a2
-        )**0.75
-        
+
+        G_inv_denominator = C_deg * (x_safe**2 + a1 * x_safe + a2) ** 0.75
+
         # G(x)^-1 を計算 (多項式は x >= -4 で常に正なのでゼロ除算の心配はない)
-        G_inv = G_inv_denominator**(-1.0)
-        
+        G_inv = G_inv_denominator ** (-1.0)
+
         # 2c. 全領域の近似式を結合
-        full_approx = (exp_neg_x + G_inv)**(-1.0)
+        full_approx = (exp_neg_x + G_inv) ** (-1.0)
 
         # 3. x = -10.0 を境に、非縮退近似と全領域近似を切り替える
         #    これにより、x が非常に小さい負の値のときの数値的安定性を確保する

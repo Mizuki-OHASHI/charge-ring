@@ -1,44 +1,46 @@
-2025-11-06 16:38:50 [INFO] Started simulation at 2025-11-06 16:38:50.333269
-2025-11-06 16:38:50 [INFO] Geometry defined with:
-2025-11-06 16:38:50 [INFO]   - Domain radius: 500.00
-2025-11-06 16:38:50 [INFO]   - Diamond depth: 200.00
-2025-11-06 16:38:50 [INFO]   - Vacuum height: 200.00
-2025-11-06 16:38:50 [INFO]   - Tip radius: 45.00
-2025-11-06 16:38:50 [INFO]   - Tip height: 8.00
-2025-11-06 16:38:50 [INFO] Checking geometry integrity...
-2025-11-06 16:38:50 [INFO]   - Number of points defined: 15
-2025-11-06 16:38:50 [INFO] Starting mesh generation...
-2025-11-06 16:38:50 [INFO]   (This may take a while for complex geometries...)
-2025-11-06 16:38:50 [INFO] Mesh generation completed
-2025-11-06 16:38:50 [INFO] Mesh generated with 15764 elements and 8054 vertices
-2025-11-06 16:38:50 [INFO] {
+2025-11-14 21:05:08 [INFO] Started simulation at 2025-11-14 21:05:08.453610
+2025-11-14 21:05:08 [INFO] Geometry defined with:
+2025-11-14 21:05:08 [INFO]   - Domain radius: 500.00
+2025-11-14 21:05:08 [INFO]   - SiC depth: 195.00
+2025-11-14 21:05:08 [INFO]   - SiO2 thickness: 5.00
+2025-11-14 21:05:08 [INFO]   - Vacuum height: 200.00
+2025-11-14 21:05:08 [INFO]   - Tip radius: 45.00
+2025-11-14 21:05:08 [INFO]   - Tip height: 8.00
+2025-11-14 21:05:08 [INFO] Checking geometry integrity...
+2025-11-14 21:05:08 [INFO]   - Number of points defined: 17
+2025-11-14 21:05:08 [INFO] Starting mesh generation...
+2025-11-14 21:05:08 [INFO]   (This may take a while for complex geometries...)
+2025-11-14 21:05:09 [INFO] Mesh generation completed
+2025-11-14 21:05:09 [INFO] Mesh generated with 15617 elements and 7985 vertices
+2025-11-14 21:05:09 [INFO] {
   "L_c": 1e-09,
   "V_c": 0.025851999786435535,
   "C0": 6.999508091037586e-25,
-  "Ef_dimless": 10.290828356206825,
-  "Ec_dimless": 212.74949889508483,
+  "Ef_dimless": 119.46525458332866,
+  "Ec_dimless": 126.10243025417755,
   "Ev_dimless": 0.0,
-  "Ea_dimless": 14.312239016578433,
+  "Edh_dimless": 121.30589609727016,
+  "Edc_dimless": 123.54943626743653,
   "lambda_ff": 0.0019999999999999996,
-  "sigma_s_target": -69.99508091037586,
+  "sigma_s_target": 6.999508091037585,
   "Feenstra": true
 }
-2025-11-06 16:38:50 [INFO] Performing warm-start with linear Poisson equation...
-2025-11-06 16:38:50 [INFO]   [Linear Warm-up] Solved at V_tip = 1.50 V
-2025-11-06 16:38:50 [INFO]   [Linear Warm-up] Solved at V_tip = 3.00 V
-2025-11-06 16:38:50 [INFO]   [Linear Warm-up] Solved at V_tip = 4.50 V
-2025-11-06 16:38:51 [INFO]   [Linear Warm-up] Solved at V_tip = 6.00 V
-2025-11-06 16:38:51 [INFO] --- Starting Homotopy Stage: Space Charge ---
-2025-11-06 16:38:51 [INFO]   [Space Charge Homotopy: θ=0.100] Converged in 7 Newton iterations.
-2025-11-06 16:38:51 [INFO]   [Space Charge Homotopy: θ=0.250] Converged in 6 Newton iterations.
-2025-11-06 16:38:52 [INFO]   [Space Charge Homotopy: θ=0.475] Converged in 6 Newton iterations.
-2025-11-06 16:38:52 [INFO]   [Space Charge Homotopy: θ=0.812] Converged in 6 Newton iterations.
-2025-11-06 16:38:53 [INFO]   [Space Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
-2025-11-06 16:38:53 [INFO] --- Starting Homotopy Stage: Interface Charge ---
-2025-11-06 16:38:54 [INFO]   [Interface Charge Homotopy: θ=0.100] Converged in 16 Newton iterations.
-2025-11-06 16:38:55 [INFO]   [Interface Charge Homotopy: θ=0.250] Converged in 12 Newton iterations.
-2025-11-06 16:38:56 [INFO]   [Interface Charge Homotopy: θ=0.475] Converged in 11 Newton iterations.
-2025-11-06 16:38:57 [INFO]   [Interface Charge Homotopy: θ=0.812] Converged in 7 Newton iterations.
-2025-11-06 16:38:57 [INFO]   [Interface Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
-2025-11-06 16:38:57 [INFO] Saved results to out
-2025-11-06 16:38:57 [INFO] Finished simulation at 2025-11-06 16:38:57.583336, duration: 0:00:07.250067
+2025-11-14 21:05:09 [INFO] Performing warm-start with linear Poisson equation...
+2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 0.50 V
+2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 1.00 V
+2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 1.50 V
+2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 2.00 V
+2025-11-14 21:05:09 [INFO] --- Starting Homotopy Stage: Space Charge ---
+2025-11-14 21:05:10 [INFO]   [Space Charge Homotopy: θ=0.100] Converged in 11 Newton iterations.
+2025-11-14 21:05:10 [INFO]   [Space Charge Homotopy: θ=0.250] Converged in 7 Newton iterations.
+2025-11-14 21:05:11 [INFO]   [Space Charge Homotopy: θ=0.475] Converged in 6 Newton iterations.
+2025-11-14 21:05:11 [INFO]   [Space Charge Homotopy: θ=0.812] Converged in 6 Newton iterations.
+2025-11-14 21:05:12 [INFO]   [Space Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
+2025-11-14 21:05:12 [INFO] --- Starting Homotopy Stage: Interface Charge ---
+2025-11-14 21:05:12 [INFO]   [Interface Charge Homotopy: θ=0.100] Converged in 6 Newton iterations.
+2025-11-14 21:05:13 [INFO]   [Interface Charge Homotopy: θ=0.250] Converged in 6 Newton iterations.
+2025-11-14 21:05:13 [INFO]   [Interface Charge Homotopy: θ=0.475] Converged in 6 Newton iterations.
+2025-11-14 21:05:14 [INFO]   [Interface Charge Homotopy: θ=0.812] Converged in 6 Newton iterations.
+2025-11-14 21:05:14 [INFO]   [Interface Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
+2025-11-14 21:05:14 [INFO] Saved results to out
+2025-11-14 21:05:14 [INFO] Finished simulation at 2025-11-14 21:05:14.720013, duration: 0:00:06.266403

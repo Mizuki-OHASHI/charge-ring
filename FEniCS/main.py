@@ -38,32 +38,46 @@ class PhysicalParameters:
     m_de: float = 0.42 * const.m_e
     m_dh: float = 1.0 * const.m_e
     Eg: float = 3.26  # バンドギャップ [eV]
-    Ed_offset: float = 0.09  # ドナー準位のオフセット [eV from Ec]
-    Ea_offset: float = 0.2  # アクセプタ準位のオフセット [eV from Ev]
+    Ed_offset_hex: float = 0.124  # 六方サイトのドナー準位 [eV from Ec]
+    Ed_offset_cub: float = 0.066  # 立方サイトのドナー準位 [eV from Ec]
+    Ed_ratio_c_to_h: float = 1.88  # 立方/六方サイトの割合
     ni: float = 8.2e15  # 固有キャリア密度 [m^-3]
     eps_sic: float = 9.7
     eps_sio2: float = 3.9
     eps_vac: float = 1.0
 
     # 計算によって導出される物理量
+    n0: float = 0.0
+    p0: float = 0.0
     Nc: float = 0.0
     Nv: float = 0.0
     Ec: float = 0.0
     Ev: float = 0.0
-    Ed: float = 0.0
-    Ea: float = 0.0
+    Edh: float = 0.0
+    Edc: float = 0.0
+    Nd_h: float = 0.0
+    Nd_c: float = 0.0
     kTeV: float = 0.0
     Ef: float = 0.0
 
     def __post_init__(self):
         """初期化後に物理定数を計算する"""
         self.kTeV = const.k * self.T / const.e
+
+        total_ratio = 1.0 + self.Ed_ratio_c_to_h
+        self.Nd_h = self.Nd * 1.0 / total_ratio
+        self.Nd_c = self.Nd * self.Ed_ratio_c_to_h / total_ratio
+
+        # 電子/正孔の平衡密度
+        self.n0 = (self.Nd + np.sqrt(self.Nd**2 + 4 * self.ni**2)) / 2
+        self.p0 = self.ni**2 / self.n0
+
         self.Nc = 2 * (2 * np.pi * self.m_de * const.k * self.T / (const.h**2)) ** 1.5
         self.Nv = 2 * (2 * np.pi * self.m_dh * const.k * self.T / (const.h**2)) ** 1.5
         self.Ev = 0
         self.Ec = self.Ev + self.Eg
-        self.Ed = self.Ec - self.Ed_offset
-        self.Ea = self.Ev + self.Ea_offset
+        self.Edh = self.Ec - self.Ed_offset_hex
+        self.Edc = self.Ec - self.Ed_offset_cub
 
 
 @dataclass
@@ -78,14 +92,19 @@ class GeometricParameters:
 
 
 def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
-    """フェルミ・ディラック積分の半整数次 (j=1/2) の近似式"""
+    """Aymerich-Humet 近似による F_{1/2}(x) の連続表現"""
+
+    a1 = 6.316
+    a2 = 12.92
+    C_deg = 0.75224956896  # 4 / (3 * sqrt(pi))
+
     return np.piecewise(
         x,
-        [x > 25],
+        [x < -10.0],
         [
-            lambda x: (2 / np.sqrt(np.pi))
-            * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
-            lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
+            lambda x: np.exp(x),
+            lambda x: 1.0
+            / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2) ** 0.75) ** (-1.0)),
         ],
     )
 
@@ -108,7 +127,9 @@ def find_fermi_level(
     def charge_neutrality_eq(Ef: float) -> float:
         p = params.Nv * fermi_dirac_integral((params.Ev - Ef) / params.kTeV)
         n = params.Nc * fermi_dirac_integral((Ef - params.Ec) / params.kTeV)
-        Ndp = params.Nd / (1 + 2 * np.exp((Ef - params.Ed) / params.kTeV))
+        Ndp_h = params.Nd_h / (1 + 2 * np.exp((Ef - params.Edh) / params.kTeV))
+        Ndp_c = params.Nd_c / (1 + 2 * np.exp((Ef - params.Edc) / params.kTeV))
+        Ndp = Ndp_h + Ndp_c
         # logスケールで解くことで数値的安定性を確保
         return np.log(p + Ndp) - np.log(n)
 
@@ -137,7 +158,9 @@ def _plot_fermi_level_determination(
         ee = np.linspace(params.Ev - 0.1, params.Ec + 0.1, 500)
         p = params.Nv * fermi_dirac_integral((params.Ev - ee) / params.kTeV)
         n = params.Nc * fermi_dirac_integral((ee - params.Ec) / params.kTeV)
-        Ndp = params.Nd / (1 + 2 * np.exp((ee - params.Ed) / params.kTeV))
+        Ndp_h = params.Nd_h / (1 + 2 * np.exp((ee - params.Edh) / params.kTeV))
+        Ndp_c = params.Nd_c / (1 + 2 * np.exp((ee - params.Edc) / params.kTeV))
+        Ndp = Ndp_h + Ndp_c
 
         plt.figure(figsize=(8, 6))
         plt.plot(
@@ -150,7 +173,8 @@ def _plot_fermi_level_determination(
         plt.ylabel("Concentration / m$^{-3}$")
         plt.axvline(Ef, color="red", ls="-.", lw=1.5, label=f"Ef = {Ef:.2f} eV")
         plt.axvline(params.Ec, color="gray", ls=":", label="$E_c$")
-        plt.axvline(params.Ed, color="gray", ls="--", label="$E_d$")
+        plt.axvline(params.Edh, color="cyan", ls="--", lw=1, label="$E_{d,h}$")
+        plt.axvline(params.Edc, color="purple", ls="--", lw=1, label="$E_{d,c}$")
         plt.axvline(params.Ev, color="gray", ls=":", label="$E_v$")
         plt.legend()
         plt.grid(True, which="both", ls="--", alpha=0.5)
@@ -196,7 +220,7 @@ def create_mesh(geom: GeometricParameters):
     # 中心軸上 r=0
     p1 = gmsh.model.geo.addPoint(0, -sic_depth_dimless - sio2_depth_dimless, 0)
     p2 = gmsh.model.geo.addPoint(0, -sio2_depth_dimless, 0)
-    O = gmsh.model.geo.addPoint(0, 0, 0)
+    origin = gmsh.model.geo.addPoint(0, 0, 0)
 
     # 探針
     tipO = gmsh.model.geo.addPoint(0, tip_z_dimless + tip_radius_dimless, 0)
@@ -230,9 +254,9 @@ def create_mesh(geom: GeometricParameters):
     q2q1 = gmsh.model.geo.addLine(q2, q1)
     q1p1 = gmsh.model.geo.addLine(q1, p1)
     q2q3 = gmsh.model.geo.addLine(q2, q3)
-    q3O = gmsh.model.geo.addLine(q3, O)
-    Op2 = gmsh.model.geo.addLine(O, p2)
-    Ot1 = gmsh.model.geo.addLine(O, tip1)
+    q3O = gmsh.model.geo.addLine(q3, origin)
+    Op2 = gmsh.model.geo.addLine(origin, p2)
+    Ot1 = gmsh.model.geo.addLine(origin, tip1)
     tiparc = gmsh.model.geo.addCircleArc(tip1, tipO, tip2)
     t2t3 = gmsh.model.geo.addLine(tip2, tip3)
     t3q4 = gmsh.model.geo.addLine(tip3, q4)
@@ -274,7 +298,7 @@ def create_mesh(geom: GeometricParameters):
     f_thresh_sio2 = gmsh.model.mesh.field.add("Threshold", field_tag_counter)
     field_tag_counter += 1
     gmsh.model.mesh.field.setNumber(f_thresh_sio2, "InField", f_sio2)
-    gmsh.model.mesh.field.setNumber(f_thresh_sio2, "SizeMin", 2.5)
+    gmsh.model.mesh.field.setNumber(f_thresh_sio2, "SizeMin", 1)
     gmsh.model.mesh.field.setNumber(f_thresh_sio2, "SizeMax", 10)
     gmsh.model.mesh.field.setNumber(f_thresh_sio2, "DistMin", 10)
     gmsh.model.mesh.field.setNumber(f_thresh_sio2, "DistMax", sic_depth_dimless / 2)
@@ -405,7 +429,8 @@ def _setup_weak_form(
     C0 = (const.e * L_c**2) / (const.epsilon_0 * V_c)
     C_Nc = homotopy_charge * C0 * phys.Nc
     C_Nv = homotopy_charge * C0 * phys.Nv
-    C_Nd = homotopy_charge * C0 * phys.Nd
+    C_Nd_h = homotopy_charge * C0 * phys.Nd_h
+    C_Nd_c = homotopy_charge * C0 * phys.Nd_c
     sigma_s_target = (phys.sigma_s * const.e * L_c) / (const.epsilon_0 * V_c)
     sigma_s_dimless = homotopy_sigma * sigma_s_target
 
@@ -413,7 +438,8 @@ def _setup_weak_form(
     Ef_dimless = phys.Ef / V_c
     Ec_dimless = phys.Ec / V_c
     Ev_dimless = phys.Ev / V_c
-    Ed_dimless = phys.Ed / V_c
+    Edh_dimless = phys.Edh / V_c
+    Edc_dimless = phys.Edc / V_c
 
     logger.info(
         json.dumps(
@@ -424,26 +450,47 @@ def _setup_weak_form(
                 "Ef_dimless": Ef_dimless,
                 "Ec_dimless": Ec_dimless,
                 "Ev_dimless": Ev_dimless,
-                "Ed_dimless": Ed_dimless,
+                "Edh_dimless": Edh_dimless,
+                "Edc_dimless": Edc_dimless,
                 "sigma_s_target": sigma_s_target,
             },
             indent=2,
         )
     )
 
+    clip_potential = 120.0
+    clip_exp = 40.0
+
+    def clamp(val, bound):
+        return ufl.max_value(ufl.min_value(val, bound), -bound)
+
+    def safe_exp(x):
+        return ufl.exp(clamp(x, clip_exp))
+
     # 電荷密度項（数値的安定性のために電位をクリップ）
-    u_clip = ufl.max_value(ufl.min_value(u, 160.0), -160.0)
+    u_clip = clamp(u, clip_potential)
 
     def fermi_dirac_ufl(x):
-        return ufl.conditional(
-            ufl.gt(x, 25),
-            (2 / np.sqrt(np.pi)) * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
-            ufl.exp(x) / (1 + 0.27 * ufl.exp(x)),
-        )
+        """Aymerich-Humet 近似の UFL 実装"""
+
+        a1 = 6.316
+        a2 = 12.92
+        C_deg = 0.75224956896
+
+        boltzmann_approx = safe_exp(x)
+        exp_neg_x = safe_exp(-x)
+        x_safe = ufl.max_value(x, -4.0)
+        G_inv_denominator = C_deg * (x_safe**2 + a1 * x_safe + a2) ** 0.75
+        G_inv = G_inv_denominator ** (-1.0)
+        full_approx = 1.0 / (exp_neg_x + G_inv)
+
+        return ufl.conditional(ufl.gt(x, -10.0), full_approx, boltzmann_approx)
 
     n_term = C_Nc * fermi_dirac_ufl((Ef_dimless - Ec_dimless) + u_clip)
     p_term = C_Nv * fermi_dirac_ufl((Ev_dimless - Ef_dimless) - u_clip)
-    Ndp_term = C_Nd / (1 + 2 * ufl.exp((Ef_dimless - Ed_dimless) + u_clip))
+    Ndp_h_term = C_Nd_h / (1 + 2 * safe_exp((Ef_dimless - Edh_dimless) + u_clip))
+    Ndp_c_term = C_Nd_c / (1 + 2 * safe_exp((Ef_dimless - Edc_dimless) + u_clip))
+    Ndp_term = Ndp_h_term + Ndp_c_term
     rho_dimless = p_term + Ndp_term - n_term
 
     # ポアソン方程式の弱形式

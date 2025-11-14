@@ -10,7 +10,6 @@
     "Ed_offset_hex": 0.124,
     "Ed_offset_cub": 0.066,
     "Ed_ratio_c_to_h": 1.88,
-    "Ea_offset": 0.2,
     "ni": 8200000000000000.0,
     "eps_sic": 9.7,
     "eps_sio2": 3.9,
@@ -29,30 +28,14 @@
     "Ef": 3.0884157359746793
   },
   "geometric": {
-    "L_c": 1e-09,
     "l_sio2": 5.0,
     "tip_radius": 45.0,
     "tip_height": 8.0,
     "l_vac": 200.0,
-    "region_radius": 500.0,
-    "n_tip_arc_points": 7
+    "region_radius": 500.0
   },
   "simulation": {
-    "V_tip": 2.0,
-    "model": "Feenstra",
-    "assume_full_ionization": false
+    "V_tip": 2.0
   },
-  "args": {
-    "V_tip": 2.0,
-    "tip_radius": 45.0,
-    "tip_height": 8.0,
-    "l_sio2": 5.0,
-    "Nd": 1e+16,
-    "sigma_s": 1000000000000.0,
-    "T": 300.0,
-    "out_dir": "out",
-    "plot_fermi": false,
-    "model": "Feenstra",
-    "assume_full_ionization": false
-  }
+  "mpi_procs": 1
 }

@@ -50,7 +50,7 @@
     "Nd": 1e+16,
     "sigma_s": 1000000000000.0,
     "T": 300.0,
-    "out_dir": "out",
+    "out_dir": "out2",
     "plot_fermi": false,
     "model": "Feenstra",
     "assume_full_ionization": false
