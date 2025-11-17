@@ -1,11 +1,22 @@
 #!/bin/bash
 #PBS -N NGSpy_job
 
-# micromamba
-export PATH="$HOME/micromamba/bin:$PATH"
-eval "$(micromamba shell hook -s bash)"
+if [ -d "$HOME/micromamba" ]; then
+  # micromamba
+  export PATH="$HOME/micromamba/bin:$PATH"
+  eval "$(micromamba shell hook -s bash)"
 
-micromamba activate fem3
+  micromamba activate fem3
+elif [ -d "$HOME/ngenv10" ]; then
+  # pyenv + virtualenv
+  export PATH="$HOME/.pyenv/bin:$PATH"
+  eval "$(pyenv init --path)"
+  eval "$(pyenv init -)"
+  alias python="$HOME/ngenv10/bin/python"
+else
+  echo "No suitable Python environment found. Please set up micromamba or pyenv with the required packages."
+  exit 1
+fi
 
 # check current directory pwd should be **/NGSpy
 if [ "$(basename "$PWD")" != "NGSpy" ]; then
@@ -47,7 +58,7 @@ NARGS=$(wc -l < $ARGSFILE)
 echo "Total $NARGS argument sets saved to $ARGSFILE"
 
 # run jobs
-NPROCS=7  # physical CPU cores - 1
+NPROCS=8  # physical CPU cores - 1
 echo "Using $NPROCS parallel processes"
 cat $ARGSFILE | xargs -n 4 -P $NPROCS sh -c '
     mkdir -p "$4"
