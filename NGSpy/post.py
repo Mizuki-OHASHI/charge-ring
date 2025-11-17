@@ -23,11 +23,14 @@ def main():
         action="store_true",
         help="Plot charge density profile",
     )
+    parser.add_argument(
+        "--plot_mesh", action="store_true", help="Plot mesh (for publication)"
+    )
     args, _ = parser.parse_known_args()
     out_dir = args.out_dir
     plot_donor_ionization = args.plot_donor_ionization
     plot_charge_density = args.plot_charge_density
-
+    plot_mesh = args.plot_mesh
     print(f"Post-processing results in {out_dir}...")
     if not os.path.exists(out_dir):
         raise FileNotFoundError(f"Output directory {out_dir} does not exist.")
@@ -99,6 +102,73 @@ def main():
     fig1.tight_layout()
     fig1.savefig(os.path.join(out_dir, "potential_2d_plot.png"), dpi=300)
     print(f"Saved 2D plot to {os.path.join(out_dir, 'potential_2d_plot.png')}")
+
+    # --- plot mesh only (for publication) ---
+    if plot_mesh:
+        figwidth_mm = 160
+        figwidth_in = figwidth_mm / 25.4
+        rc_params = {
+            "font.size": 10,  # 目盛りや凡例の基本サイズ
+            "axes.titlesize": 11.5,  # 軸のタイトル
+            "axes.labelsize": 11.5,  # 軸ラベル (x, y)
+            "xtick.labelsize": 10,  # x軸目盛り
+            "ytick.labelsize": 10,  # y軸目盛り
+            "legend.fontsize": 10,  # 凡例
+            # "figure.titlesize": 14,  # fig.suptitle()
+            # PDF保存時にフォントを埋め込む設定
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+        }
+        rc_params_stashed = plt.rcParams.copy()
+        plt.rcParams.update(rc_params)
+        fig, axes = plt.subplots(1, 2, figsize=(figwidth_in, figwidth_in * 0.4))
+        axes[0].triplot(triangulation, "k-", lw=0.5)
+        axes[0].axhline(y=0, color="white", linestyle="--", linewidth=0.5)
+        axes[0].axhline(
+            y=-geom_params.l_sio2, color="white", linestyle="--", linewidth=0.5
+        )
+        # zoom region in full mesh
+        axes[0].add_patch(
+            plt.Rectangle(
+                (0, -20), 50, 40, linewidth=1, edgecolor="red", facecolor="none"
+            )
+        )
+        axes[0].set_title("Full Mesh")
+        axes[0].set_xlabel("r / nm")
+        axes[0].set_ylabel("z / nm")
+        axes[0].set_aspect("equal")
+        axes[0].set_xlim(0, r_max)
+        axes[0].set_ylim(z_min, z_max)
+        # zoomed mesh
+        axes[1].triplot(triangulation, "k-", lw=0.5)
+        axes[1].axhline(y=0, color="blue", linestyle="--", linewidth=1.5)
+        axes[1].axhline(
+            y=-geom_params.l_sio2, color="blue", linestyle="--", linewidth=1.5
+        )
+        axes[1].set_title("Zoomed Mesh (red box)")
+        axes[1].set_xlabel("r / nm")
+        axes[1].set_ylabel("z / nm")
+        axes[1].set_aspect("equal")
+        for spine in axes[1].spines.values():
+            spine.set_edgecolor("red")
+        axes[1].text(
+            10, 15, "tip", color="black", fontsize=10, ha="center", va="center"
+        )
+        axes[1].text(
+            30, 5, "vacuum", color="black", fontsize=10, ha="center", va="center"
+        )
+        axes[1].text(
+            30, -2.5, "SiO$_2$", color="black", fontsize=10, ha="center", va="center"
+        )
+        axes[1].text(
+            30, -12.5, "SiC", color="black", fontsize=10, ha="center", va="center"
+        )
+        axes[1].set_xlim(0, 50)
+        axes[1].set_ylim(-20, 20)
+        fig.tight_layout()
+        fig.savefig(os.path.join(out_dir, "mesh_plot.pdf"))
+        print(f"Saved mesh plot to {os.path.join(out_dir, 'mesh_plot.pdf')}")
+        plt.rcParams.update(rc_params_stashed)
 
     # --- Line Profile Plots ---
     print("Creating line profile plot...")
@@ -401,7 +471,9 @@ def main():
         print("Creating charge density line profiles...")
 
         # Helper function to calculate charge densities
-        def calculate_charge_densities(u_dimless_val, phys_params, V_c, assume_full_ionization):
+        def calculate_charge_densities(
+            u_dimless_val, phys_params, V_c, assume_full_ionization
+        ):
             """
             Calculate charge densities from dimensionless potential.
 
@@ -420,7 +492,7 @@ def main():
             # Calculate electron density using Fermi-Dirac statistics
             # n = Nc * F_{1/2}((Ef - Ec + e*u) / kT)
             eta_n = (phys_params.Ef - phys_params.Ec + u_volt) / kTeV
-            
+
             # Use fermi_dirac_integral approximation from main.py
             # Aymerich-Humet approximation constants for F_{1/2}
             a1_aymerich = 6.316
@@ -433,13 +505,12 @@ def main():
             else:
                 # Aymerich-Humet approximation (valid across the full range)
                 eta_n_safe = max(eta_n, -4.0)
-                G_inv_denominator = C_deg_aymerich * (
-                    eta_n_safe**2 + a1_aymerich * eta_n_safe + a2_aymerich
-                ) ** 0.75
-                exp_neg_eta_n = np.exp(-eta_n)
-                n_integral_approx = 1.0 / (
-                    exp_neg_eta_n + (1.0 / G_inv_denominator)
+                G_inv_denominator = (
+                    C_deg_aymerich
+                    * (eta_n_safe**2 + a1_aymerich * eta_n_safe + a2_aymerich) ** 0.75
                 )
+                exp_neg_eta_n = np.exp(-eta_n)
+                n_integral_approx = 1.0 / (exp_neg_eta_n + (1.0 / G_inv_denominator))
 
             n = phys_params.Nc * n_integral_approx
 
@@ -454,9 +525,10 @@ def main():
                 # Aymerich-Humet 近似 (全領域で有効)
                 # F_1/2(eta_p) \approx 1.0 / (exp(-eta_p) + G(eta_p)^-1)
                 eta_p_safe = max(eta_p, -4.0)
-                G_inv_denominator = C_deg_aymerich * (
-                    eta_p_safe**2 + a1_aymerich * eta_p_safe + a2_aymerich
-                ) ** 0.75
+                G_inv_denominator = (
+                    C_deg_aymerich
+                    * (eta_p_safe**2 + a1_aymerich * eta_p_safe + a2_aymerich) ** 0.75
+                )
                 exp_neg_eta_p = np.exp(-eta_p)
                 p_integral_approx = 1.0 / (exp_neg_eta_p + (1.0 / G_inv_denominator))
 
@@ -550,8 +622,12 @@ def main():
         )
         ax4_z.set_xlabel("z (nm)")
         ax4_z.set_ylabel("Charge Density (cm$^{-3}$)")
-        ionization_status = "Full Ionization" if assume_full_ionization else "Partial Ionization"
-        ax4_z.set_title(f"Charge Density Profile along Center Axis (r=0)\n({ionization_status})")
+        ionization_status = (
+            "Full Ionization" if assume_full_ionization else "Partial Ionization"
+        )
+        ax4_z.set_title(
+            f"Charge Density Profile along Center Axis (r=0)\n({ionization_status})"
+        )
         ax4_z.legend()
         ax4_z.grid(True, which="both", alpha=0.3)
         ax4_z.set_xlim(min(valid_z_charge), max(valid_z_charge))
@@ -591,9 +667,7 @@ def main():
         ax4_r.set_xlim(0, max(valid_r_charge))
 
         fig4.tight_layout()
-        fig4.savefig(
-            os.path.join(out_dir, "charge_density_line_profiles.png"), dpi=150
-        )
+        fig4.savefig(os.path.join(out_dir, "charge_density_line_profiles.png"), dpi=150)
         print(
             f"Saved charge density profiles to {os.path.join(out_dir, 'charge_density_line_profiles.png')}"
         )
