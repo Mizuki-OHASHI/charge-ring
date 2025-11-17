@@ -38,12 +38,14 @@
     "n_tip_arc_points": 7
   },
   "simulation": {
-    "V_tip": 2.0,
+    "V_tips": [
+      2.0
+    ],
     "model": "Feenstra",
     "assume_full_ionization": false
   },
   "args": {
-    "V_tip": 2.0,
+    "V_tip": "2.0",
     "tip_radius": 45.0,
     "tip_height": 8.0,
     "l_sio2": 5.0,

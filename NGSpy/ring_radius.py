@@ -36,10 +36,21 @@ def load_line_profiles(dir_path):
     pattern = re.compile(
         r"Vtip_(?P<Vtip>-?\d+\.?\d*)_Rtip_(?P<Rtip>\d+\.?\d*)_Htip_(?P<Htip>\d+\.?\d*)"
     )
+    pattern_v2 = re.compile(  # Rtip_20_Htip_3.0_Vneg
+        r"Rtip_(?P<Rtip>\d+\.?\d*)_Htip_(?P<Htip>\d+\.?\d*)_V(?P<Vsign>neg|pos)"
+    )
+    pattern_v2_inner = re.compile(  # V_tip_+0.50V
+        r"V_tip_(?P<Vtip>[+-]?\d+\.?\d*)V"
+    )
     r = None
+    version = None
     for d in os.listdir(dir_path):
         match = pattern.match(d)
         if match:
+            if version is None:
+                version = 1
+                print("Detected directory naming version 1")
+            assert version == 1, "Mixed directory naming versions detected"
             Vtip = float(match.group("Vtip"))
             Rtip = float(match.group("Rtip"))
             Htip = float(match.group("Htip"))
@@ -58,6 +69,51 @@ def load_line_profiles(dir_path):
                         "r values are not defined yet; cannot create placeholder"
                     )
                 data_dirs[(Vtip, Rtip, Htip)] = (d, np.full_like(r, np.nan))
+        else:
+            match_v2 = pattern_v2.match(d)
+            if match_v2:
+                if version is None:
+                    version = 2
+                    print("Detected directory naming version 2")
+                assert version == 2, "Mixed directory naming versions detected"
+                Rtip = float(match_v2.group("Rtip"))
+                Htip = float(match_v2.group("Htip"))
+                for d2 in os.listdir(os.path.join(dir_path, d)):
+                    match_inner = pattern_v2_inner.match(d2)
+                    if match_inner:
+                        Vtip_str = match_inner.group("Vtip")
+                        Vtip_value = float(Vtip_str)
+                        if match_v2.group("Vsign") == "neg":
+                            Vtip_value = -abs(Vtip_value)
+                        else:
+                            Vtip_value = abs(Vtip_value)
+                        profile_path = os.path.join(
+                            dir_path, d, d2, "line_profile_horizontal.txt"
+                        )
+                        if os.path.isfile(profile_path):
+                            data = np.loadtxt(profile_path, comments="#")
+                            data_dirs[(Vtip_value, Rtip, Htip)] = (
+                                f"{d}/{d2}",
+                                data[:, 1],
+                            )
+                            if r is None:
+                                r = data[:, 0]
+                            else:
+                                assert np.allclose(r, data[:, 0]), (
+                                    f"r values do not match in {d}/{d2}"
+                                )
+                        else:
+                            print(
+                                f"Warning: 'line_profile_horizontal.txt' not found in {d}/{d2}"
+                            )
+                            if r is None:
+                                raise ValueError(
+                                    "r values are not defined yet; cannot create placeholder"
+                                )
+                            data_dirs[(Vtip_value, Rtip, Htip)] = (
+                                f"{d}/{d2}",
+                                np.full_like(r, np.nan),
+                            )
     return data_dirs, r
 
 

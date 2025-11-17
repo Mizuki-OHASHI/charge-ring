@@ -9,18 +9,18 @@ import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main_fast import GeometricParameters, PhysicalParameters, load_resultssults
+from main_fast import GeometricParameters, PhysicalParameters, load_results
 
 
 def find_vtip_subdirs(out_dir: str) -> list[tuple[str, float]]:
     """Find V_tip_±X.XXV subdirectories and extract voltage values
-    
+
     Returns:
         List of (subdir_path, V_tip_value) tuples, sorted by absolute V_tip value
     """
     pattern = re.compile(r"^V_tip_([+-]?\d+\.\d{2})V$")
     vtip_dirs = []
-    
+
     for item in os.listdir(out_dir):
         item_path = os.path.join(out_dir, item)
         if os.path.isdir(item_path):
@@ -28,10 +28,10 @@ def find_vtip_subdirs(out_dir: str) -> list[tuple[str, float]]:
             if match:
                 V_tip = float(match.group(1))
                 vtip_dirs.append((item_path, V_tip))
-    
+
     # Sort by absolute value
     vtip_dirs.sort(key=lambda x: abs(x[1]))
-    
+
     return vtip_dirs
 
 
@@ -47,10 +47,10 @@ def process_single_vtip(
     plot_mesh: bool,
 ):
     """Process a single V_tip directory and generate plots"""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Processing V_tip = {V_tip:.3f} V")
-    print(f"{'='*60}")
-    
+    print(f"{'=' * 60}")
+
     # Load results from this subdirectory
     msh, u_dimless, _ = load_results(subdir, geom_params, V_c)
     L_c = geom_params.L_c  # [m]
@@ -731,33 +731,33 @@ def process_single_vtip(
 
 def create_comparison_plots(vtip_dirs: list[tuple[str, float]], out_dir: str):
     """Create comparison plots overlaying all V_tip line profiles"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Creating comparison plots...")
-    print("="*60)
-    
+    print("=" * 60)
+
     comparison_dir = os.path.join(out_dir, "comparison_plots")
     os.makedirs(comparison_dir, exist_ok=True)
-    
+
     # Collect data from all V_tip directories
     all_data_vertical = []
     all_data_horizontal = []
-    
+
     for subdir, V_tip in vtip_dirs:
         vert_file = os.path.join(subdir, "line_profile_vertical.txt")
         horiz_file = os.path.join(subdir, "line_profile_horizontal.txt")
-        
+
         if os.path.exists(vert_file):
             data = np.loadtxt(vert_file)
             all_data_vertical.append((V_tip, data[:, 0], data[:, 1]))
-        
+
         if os.path.exists(horiz_file):
             data = np.loadtxt(horiz_file)
             all_data_horizontal.append((V_tip, data[:, 0], data[:, 1]))
-    
+
     if not all_data_vertical and not all_data_horizontal:
         print("No line profile data found for comparison plots.")
         return
-    
+
     # Plot vertical comparison
     if all_data_vertical:
         fig_v, ax_v = plt.subplots(figsize=(10, 6))
@@ -769,10 +769,14 @@ def create_comparison_plots(vtip_dirs: list[tuple[str, float]], out_dir: str):
         ax_v.legend()
         ax_v.grid(True, alpha=0.3)
         fig_v.tight_layout()
-        fig_v.savefig(os.path.join(comparison_dir, "potential_vertical_comparison.png"), dpi=150)
+        fig_v.savefig(
+            os.path.join(comparison_dir, "potential_vertical_comparison.png"), dpi=150
+        )
         plt.close(fig_v)
-        print(f"Saved vertical comparison to {comparison_dir}/potential_vertical_comparison.png")
-    
+        print(
+            f"Saved vertical comparison to {comparison_dir}/potential_vertical_comparison.png"
+        )
+
     # Plot horizontal comparison
     if all_data_horizontal:
         fig_h, ax_h = plt.subplots(figsize=(10, 6))
@@ -784,9 +788,13 @@ def create_comparison_plots(vtip_dirs: list[tuple[str, float]], out_dir: str):
         ax_h.legend()
         ax_h.grid(True, alpha=0.3)
         fig_h.tight_layout()
-        fig_h.savefig(os.path.join(comparison_dir, "potential_horizontal_comparison.png"), dpi=150)
+        fig_h.savefig(
+            os.path.join(comparison_dir, "potential_horizontal_comparison.png"), dpi=150
+        )
         plt.close(fig_h)
-        print(f"Saved horizontal comparison to {comparison_dir}/potential_horizontal_comparison.png")
+        print(
+            f"Saved horizontal comparison to {comparison_dir}/potential_horizontal_comparison.png"
+        )
 
 
 def main():
@@ -812,7 +820,7 @@ def main():
     )
     args, _ = parser.parse_known_args()
     out_dir = args.out_dir
-    
+
     print(f"Post-processing results in {out_dir}...")
     if not os.path.exists(out_dir):
         raise FileNotFoundError(f"Output directory {out_dir} does not exist.")
@@ -821,32 +829,32 @@ def main():
     params_file = os.path.join(out_dir, "parameters.json")
     if not os.path.exists(params_file):
         raise FileNotFoundError(f"No parameters.json found in {out_dir}")
-    
+
     with open(params_file, "r") as f:
         params = json.load(f)
-    
+
     geom_params_input = params["geometric"]
     phys_params_input = params["physical"]
     assume_full_ionization = params["simulation"].get("assume_full_ionization", False)
     geom_params = GeometricParameters(**geom_params_input)
     phys_params = PhysicalParameters(**phys_params_input)
-    
+
     # Get V_c from any metadata.json (should be the same for all)
     vtip_dirs = find_vtip_subdirs(out_dir)
-    
+
     if not vtip_dirs:
         raise FileNotFoundError(f"No V_tip_±X.XXV subdirectories found in {out_dir}")
-    
+
     print(f"Found {len(vtip_dirs)} V_tip directories:")
     for subdir, V_tip in vtip_dirs:
         print(f"  - {os.path.basename(subdir)} (V_tip = {V_tip:+.3f} V)")
-    
+
     # Get V_c from first subdirectory
     first_metadata = os.path.join(vtip_dirs[0][0], "metadata.json")
     with open(first_metadata, "r") as f:
         metadata = json.load(f)
     V_c = metadata["V_c"]
-    
+
     # Process each V_tip directory
     for subdir, V_tip in vtip_dirs:
         process_single_vtip(
@@ -860,14 +868,14 @@ def main():
             plot_charge_density=args.plot_charge_density,
             plot_mesh=args.plot_mesh,
         )
-    
+
     # Create comparison plots
     if not args.no_comparison:
         create_comparison_plots(vtip_dirs, out_dir)
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("Post-processing completed!")
-    print("="*60)
+    print("=" * 60)
 
 
 if __name__ == "__main__":

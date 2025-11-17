@@ -1,18 +1,20 @@
-2025-11-14 21:05:08 [INFO] Started simulation at 2025-11-14 21:05:08.453610
-2025-11-14 21:05:08 [INFO] Geometry defined with:
-2025-11-14 21:05:08 [INFO]   - Domain radius: 500.00
-2025-11-14 21:05:08 [INFO]   - SiC depth: 195.00
-2025-11-14 21:05:08 [INFO]   - SiO2 thickness: 5.00
-2025-11-14 21:05:08 [INFO]   - Vacuum height: 200.00
-2025-11-14 21:05:08 [INFO]   - Tip radius: 45.00
-2025-11-14 21:05:08 [INFO]   - Tip height: 8.00
-2025-11-14 21:05:08 [INFO] Checking geometry integrity...
-2025-11-14 21:05:08 [INFO]   - Number of points defined: 17
-2025-11-14 21:05:08 [INFO] Starting mesh generation...
-2025-11-14 21:05:08 [INFO]   (This may take a while for complex geometries...)
-2025-11-14 21:05:09 [INFO] Mesh generation completed
-2025-11-14 21:05:09 [INFO] Mesh generated with 15617 elements and 7985 vertices
-2025-11-14 21:05:09 [INFO] {
+2025-11-17 17:35:16 [INFO] Started simulation at 2025-11-17 17:35:16.526428
+2025-11-17 17:35:16 [INFO] Processing V_tip values in order: [2.0]
+2025-11-17 17:35:16 [INFO] Creating mesh (this will be reused for all V_tip values)...
+2025-11-17 17:35:16 [INFO] Geometry defined with:
+2025-11-17 17:35:16 [INFO]   - Domain radius: 500.00
+2025-11-17 17:35:16 [INFO]   - SiC depth: 195.00
+2025-11-17 17:35:16 [INFO]   - SiO2 thickness: 5.00
+2025-11-17 17:35:16 [INFO]   - Vacuum height: 200.00
+2025-11-17 17:35:16 [INFO]   - Tip radius: 45.00
+2025-11-17 17:35:16 [INFO]   - Tip height: 8.00
+2025-11-17 17:35:16 [INFO] Checking geometry integrity...
+2025-11-17 17:35:16 [INFO]   - Number of points defined: 17
+2025-11-17 17:35:16 [INFO] Starting mesh generation...
+2025-11-17 17:35:16 [INFO]   (This may take a while for complex geometries...)
+2025-11-17 17:35:17 [INFO] Mesh generation completed
+2025-11-17 17:35:17 [INFO] Mesh generated with 15617 elements and 7985 vertices
+2025-11-17 17:35:17 [INFO] {
   "L_c": 1e-09,
   "V_c": 0.025851999786435535,
   "C0": 6.999508091037586e-25,
@@ -25,22 +27,20 @@
   "sigma_s_target": 6.999508091037585,
   "Feenstra": true
 }
-2025-11-14 21:05:09 [INFO] Performing warm-start with linear Poisson equation...
-2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 0.50 V
-2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 1.00 V
-2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 1.50 V
-2025-11-14 21:05:09 [INFO]   [Linear Warm-up] Solved at V_tip = 2.00 V
-2025-11-14 21:05:09 [INFO] --- Starting Homotopy Stage: Space Charge ---
-2025-11-14 21:05:10 [INFO]   [Space Charge Homotopy: θ=0.100] Converged in 11 Newton iterations.
-2025-11-14 21:05:10 [INFO]   [Space Charge Homotopy: θ=0.250] Converged in 7 Newton iterations.
-2025-11-14 21:05:11 [INFO]   [Space Charge Homotopy: θ=0.475] Converged in 6 Newton iterations.
-2025-11-14 21:05:11 [INFO]   [Space Charge Homotopy: θ=0.812] Converged in 6 Newton iterations.
-2025-11-14 21:05:12 [INFO]   [Space Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
-2025-11-14 21:05:12 [INFO] --- Starting Homotopy Stage: Interface Charge ---
-2025-11-14 21:05:12 [INFO]   [Interface Charge Homotopy: θ=0.100] Converged in 6 Newton iterations.
-2025-11-14 21:05:13 [INFO]   [Interface Charge Homotopy: θ=0.250] Converged in 6 Newton iterations.
-2025-11-14 21:05:13 [INFO]   [Interface Charge Homotopy: θ=0.475] Converged in 6 Newton iterations.
-2025-11-14 21:05:14 [INFO]   [Interface Charge Homotopy: θ=0.812] Converged in 6 Newton iterations.
-2025-11-14 21:05:14 [INFO]   [Interface Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
-2025-11-14 21:05:14 [INFO] Saved results to out
-2025-11-14 21:05:14 [INFO] Finished simulation at 2025-11-14 21:05:14.720013, duration: 0:00:06.266403
+2025-11-17 17:35:17 [INFO] ============================================================
+2025-11-17 17:35:17 [INFO] Solving for V_tip = 2.000 V (1/1)
+2025-11-17 17:35:17 [INFO] ============================================================
+2025-11-17 17:35:17 [INFO] First V_tip: performing full initialization...
+2025-11-17 17:35:17 [INFO] Performing warm-start with linear Poisson equation...
+2025-11-17 17:35:17 [INFO]   [Linear Warm-up] Solved at V_tip = 0.50 V
+2025-11-17 17:35:17 [INFO]   [Linear Warm-up] Solved at V_tip = 1.00 V
+2025-11-17 17:35:17 [INFO]   [Linear Warm-up] Solved at V_tip = 1.50 V
+2025-11-17 17:35:17 [INFO]   [Linear Warm-up] Solved at V_tip = 2.00 V
+2025-11-17 17:35:17 [INFO] --- Starting Homotopy Stage: Space Charge ---
+2025-11-17 17:35:18 [INFO]   [Space Charge Homotopy: θ=0.100] Converged in 11 Newton iterations.
+2025-11-17 17:35:19 [INFO]   [Space Charge Homotopy: θ=0.250] Converged in 7 Newton iterations.
+2025-11-17 17:35:20 [INFO]   [Space Charge Homotopy: θ=0.475] Converged in 6 Newton iterations.
+2025-11-17 17:35:21 [INFO]   [Space Charge Homotopy: θ=0.812] Converged in 6 Newton iterations.
+2025-11-17 17:35:21 [INFO]   [Space Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
+2025-11-17 17:35:21 [INFO] --- Starting Homotopy Stage: Interface Charge ---
+2025-11-17 17:35:22 [INFO]   [Interface Charge Homotopy: θ=0.100] Converged in 6 Newton iterations.

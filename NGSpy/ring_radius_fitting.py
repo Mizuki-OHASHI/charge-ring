@@ -35,8 +35,8 @@ def main(
         exp_vtip_path, exp_htip_path
     )
     exp_Htip_sweep[:, 0] += exp_zoffset
-    exp_Vtip_sweep[:, 0] += exp_vtip_offset
-    fixed_Vtip += exp_vtip_offset
+    # exp_Vtip_sweep[:, 0] += exp_vtip_offset
+    # fixed_Vtip += exp_vtip_offset
     Vtip_values, Rtip_values, Htip_values, r, potentials = load_simulation_data(
         sim_path
     )
@@ -44,6 +44,7 @@ def main(
         f"{Vtip_values.shape=}, {Rtip_values.shape=}, {Htip_values.shape=}, {r.shape=}, {potentials.shape=}"
     )
     # Vtip_values.shape=(13,), Rtip_values.shape=(9,), Htip_values.shape=(27,), z.shape=(101,), r.shape=(201,), potentials.shape=(13, 9, 27, 201)
+    Vtip_values += exp_vtip_offset
 
     # 実験データと合わせて範囲を設定する
     Vtip_min = exp_Vtip_sweep[:, 0].min()
