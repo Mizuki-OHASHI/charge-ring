@@ -9,7 +9,7 @@ import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main_fast import GeometricParameters, PhysicalParameters, load_results
+from main_fast import GeometricParameters, PhysicalParameters, load_resultssults
 
 
 def find_vtip_subdirs(out_dir: str) -> list[tuple[str, float]]:
