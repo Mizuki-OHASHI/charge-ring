@@ -68,14 +68,37 @@ def main(
 
     tip_radius = 45.0
 
-    fixed_Vtip_idx = np.abs(Vtip_values - fixed_Vtip).argmin()
-    fixed_Htip_idx = np.abs(Htip_values - fixed_Htip).argmin()
-
     def plot_with_params(tip_radius):
-        t_idx = np.abs(Rtip_values - tip_radius).argmin()
+        # 3D linear interpolation for Rtip, Htip, and Vtip
+        # potentials shape: (n_Vtip, n_Rtip, n_Htip, n_r)
 
-        data1 = potentials[:, t_idx, fixed_Htip_idx].T * 1e3
-        data2 = potentials[fixed_Vtip_idx, t_idx, :].T * 1e3
+        # Step 1: Interpolate along Rtip axis (axis=1)
+        data_interp_rtip = np.zeros((len(Vtip_values), len(Htip_values), len(r)))
+        for i in range(len(Vtip_values)):
+            for j in range(len(Htip_values)):
+                for k in range(len(r)):
+                    data_interp_rtip[i, j, k] = np.interp(
+                        tip_radius, Rtip_values, potentials[i, :, j, k]
+                    )
+
+        # Step 2: Interpolate along Htip axis for data1 (Vtip sweep at fixed Htip)
+        data1_interp = np.zeros((len(Vtip_values), len(r)))
+        for i in range(len(Vtip_values)):
+            for k in range(len(r)):
+                data1_interp[i, k] = np.interp(
+                    fixed_Htip, Htip_values, data_interp_rtip[i, :, k]
+                )
+
+        # Step 3: Interpolate along Vtip axis for data2 (Htip sweep at fixed Vtip)
+        data2_interp = np.zeros((len(Htip_values), len(r)))
+        for j in range(len(Htip_values)):
+            for k in range(len(r)):
+                data2_interp[j, k] = np.interp(
+                    fixed_Vtip, Vtip_values, data_interp_rtip[:, j, k]
+                )
+
+        data1 = data1_interp.T * 1e3
+        data2 = data2_interp.T * 1e3
         global_min = min(np.nanmin(data1), np.nanmin(data2))
         global_max = max(np.nanmax(data1), np.nanmax(data2))
         common_levels = np.linspace(global_min, global_max, 20)

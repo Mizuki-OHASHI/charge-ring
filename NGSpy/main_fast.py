@@ -88,9 +88,13 @@ class GeometricParameters:
     l_vac: float = 200.0  # Vacuum layer thickness [nm]
     region_radius: float = 500.0  # Calculation region radius [nm]
     n_tip_arc_points: int = 7  # Number of intermediate points in tip arc (odd)
+    mesh_scale: float = 1.0  # Scaling factor for mesh size
 
     def __post_init__(self):
         assert self.n_tip_arc_points % 2 == 1, "n_tip_arc_points should be odd"
+        assert 0.01 <= self.mesh_scale <= 10.0, (
+            "mesh_scale should be between 0.01 and 10.0"
+        )
 
 
 # def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
@@ -270,18 +274,36 @@ def create_mesh(geom: GeometricParameters):
 
     # Bottom rectangle (SiC, domain=1): p1 → p2 → q2 → q1 → p1
     geo.Append(["line", p1, p2], bc="axis", leftdomain=0, rightdomain=1, maxh=5)
-    geo.Append(["line", p2, q2], bc="sic/sio2", leftdomain=2, rightdomain=1, maxh=1)
+    geo.Append(
+        ["line", p2, q2],
+        bc="sic/sio2",
+        leftdomain=2,
+        rightdomain=1,
+        maxh=1 * geom.mesh_scale,
+    )
     geo.Append(["line", q2, q1], bc="far-field", leftdomain=0, rightdomain=1)
     geo.Append(["line", q1, p1], bc="ground", leftdomain=0, rightdomain=1)
 
     # Middle rectangle (SiO2, domain=2): p2 → origin → q3 → q2
     # p2→q2 is already defined
-    geo.Append(["line", origin, p2], bc="axis", leftdomain=2, rightdomain=0, maxh=0.5)
+    geo.Append(
+        ["line", origin, p2],
+        bc="axis",
+        leftdomain=2,
+        rightdomain=0,
+        maxh=0.5 * geom.mesh_scale,
+    )
     geo.Append(["line", q2, q3], bc="far-field", leftdomain=2, rightdomain=0)
     geo.Append(["line", q3, origin], bc="sio2/vacuum", leftdomain=2, rightdomain=3)
 
     # Top with tip (vacuum, domain=3): origin → tip1 → tip2 → tip3 → q4 → q3
-    geo.Append(["line", origin, tip1], bc="axis", leftdomain=0, rightdomain=3, maxh=0.5)
+    geo.Append(
+        ["line", origin, tip1],
+        bc="axis",
+        leftdomain=0,
+        rightdomain=3,
+        maxh=0.5 * geom.mesh_scale,
+    )
     for i in range(0, len(tipMlst), 2):
         points = [
             tip1 if i == 0 else tipMlst[i - 1],
@@ -323,7 +345,7 @@ def create_mesh(geom: GeometricParameters):
 
     # Set mesh size for each domain
     # geo.SetDomainMaxH(1, 5.0)  # SiC
-    geo.SetDomainMaxH(2, 2)  # SiO2
+    geo.SetDomainMaxH(2, 2 * geom.mesh_scale)  # SiO2
     # geo.SetDomainMaxH(3, 1.0)  # Vacuum
 
     # Mesh generation (global maximum element size)
@@ -346,9 +368,10 @@ def run_fem_simulation(
     Feenstra: bool,
     out_dir: str,
     assume_full_ionization: bool,
+    maxerr=1e-11,
 ):
     """Run the FEM simulation using NGSolve for multiple V_tip values
-    
+
     Optimizations:
     - Mesh is created once and reused for all V_tip values
     - V_tip values are sorted by absolute value for smooth convergence
@@ -394,9 +417,9 @@ def run_fem_simulation(
 
     # Loop through V_tip values
     for i, V_tip in enumerate(V_tip_sorted):
-        logger.info(f"{'='*60}")
-        logger.info(f"Solving for V_tip = {V_tip:.3f} V ({i+1}/{len(V_tip_sorted)})")
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
+        logger.info(f"Solving for V_tip = {V_tip:.3f} V ({i + 1}/{len(V_tip_sorted)})")
+        logger.info(f"{'=' * 60}")
 
         # Set boundary conditions
         u.Set(0, definedon=msh.Boundaries("ground"))  # Dirichlet BC at ground
@@ -406,11 +429,15 @@ def run_fem_simulation(
             # First voltage: full procedure (linear warm-start + homotopy)
             logger.info("First V_tip: performing full initialization...")
             _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh)
-            solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma)
+            solve_with_homotopy(
+                a, u, fes, msh, homotopy_charge, homotopy_sigma, maxerr=maxerr
+            )
         else:
             # Subsequent voltages: try direct Newton with fallback
             logger.info("Using previous solution as warm start...")
-            solve_with_direct_newton(a, u, fes, msh, homotopy_charge, homotopy_sigma)
+            solve_with_direct_newton(
+                a, u, fes, msh, homotopy_charge, homotopy_sigma, maxerr=maxerr
+            )
 
         # Save results in subdirectory
         out_subdir = os.path.join(out_dir, f"V_tip_{V_tip:+.2f}V")
@@ -613,7 +640,7 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
         logger.info(f"  [Linear Warm-up] Solved at V_tip = {v_val:.2f} V")
 
 
-def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma):
+def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma, maxerr=1e-11):
     """Solve the nonlinear Poisson equation using homotopy method
 
     Stages:
@@ -622,37 +649,43 @@ def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma):
     """
 
     homotopy_sigma.Set(0.0)
-    _solve_homotopy_stage(a, u, fes, msh, homotopy_charge, "Space Charge")
+    _solve_homotopy_stage(
+        a, u, fes, msh, homotopy_charge, "Space Charge", maxerr=maxerr
+    )
 
     homotopy_charge.Set(1.0)
-    _solve_homotopy_stage(a, u, fes, msh, homotopy_sigma, "Interface Charge")
+    _solve_homotopy_stage(
+        a, u, fes, msh, homotopy_sigma, "Interface Charge", maxerr=maxerr
+    )
 
 
-def solve_with_direct_newton(a, u, fes, msh, homotopy_charge, homotopy_sigma, fallback_theta=0.8):
+def solve_with_direct_newton(
+    a, u, fes, msh, homotopy_charge, homotopy_sigma, fallback_theta=0.8, maxerr=1e-11
+):
     """Solve directly with Newton method (homotopy already at 1.0)
-    
+
     If Newton fails to converge, fall back to partial homotopy from fallback_theta to 1.0
     """
     logger.info("--- Attempting direct Newton solve (homotopy = 1.0) ---")
-    
+
     homotopy_charge.Set(1.0)
     homotopy_sigma.Set(1.0)
-    
+
     freedofs = fes.FreeDofs()
     freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
     freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
-    
+
     newton_kwargs = dict(
         freedofs=freedofs,
         maxit=100,
-        maxerr=1e-11,
+        maxerr=maxerr,
         inverse="sparsecholesky",
         dampfactor=0.7,
         printing=False,
     )
-    
+
     a.Assemble()
-    
+
     try:
         converged, iter = Newton(a, u, **newton_kwargs)
         if converged < 0:
@@ -661,41 +694,51 @@ def solve_with_direct_newton(a, u, fes, msh, homotopy_charge, homotopy_sigma, fa
         return
     except Exception as exc:
         logger.warning(f"  [Direct Newton] Failed: {exc}")
-        logger.info(f"  Falling back to partial homotopy from θ={fallback_theta:.2f} to 1.0")
-        
+        logger.info(
+            f"  Falling back to partial homotopy from θ={fallback_theta:.2f} to 1.0"
+        )
+
         # Fallback: run homotopy from fallback_theta to 1.0 for both parameters
         backup = ng.GridFunction(fes)
         backup.vec.data = u.vec
-        
+
         # First do charge homotopy
         homotopy_sigma.Set(fallback_theta)
         theta = fallback_theta
         step = 0.1
         min_step = 1e-4
-        
+
         while theta < 1.0 - 1e-12:
             trial = min(1.0, theta + step)
             homotopy_sigma.Set(trial)
             a.Assemble()
-            
+
             try:
                 converged, iter = Newton(a, u, **newton_kwargs)
                 if converged < 0:
                     raise RuntimeError("Newton solver did not converge")
                 theta = trial
                 backup.vec.data = u.vec
-                logger.info(f"  [Fallback Homotopy: θ={theta:.3f}] Converged in {iter} iterations.")
+                logger.info(
+                    f"  [Fallback Homotopy: θ={theta:.3f}] Converged in {iter} iterations."
+                )
                 if step < 0.5:
                     step *= 1.5
             except Exception as exc2:
                 u.vec.data = backup.vec
                 step *= 0.5
-                logger.warning(f"  [Fallback Homotopy: θ→{trial:.3f}] Failed. Reducing step to {step:.4f}.")
+                logger.warning(
+                    f"  [Fallback Homotopy: θ→{trial:.3f}] Failed. Reducing step to {step:.4f}."
+                )
                 if step < min_step:
-                    raise RuntimeError("Fallback homotopy failed: step size became too small.")
+                    raise RuntimeError(
+                        "Fallback homotopy failed: step size became too small."
+                    )
 
 
-def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
+def _solve_homotopy_stage(
+    a, u, fes, msh, homotopy_param, stage_name: str, maxerr=1e-11
+):
     logger.info(f"--- Starting Homotopy Stage: {stage_name} ---")
 
     theta = 0.0
@@ -712,7 +755,7 @@ def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
     newton_kwargs = dict(
         freedofs=freedofs,
         maxit=100,
-        maxerr=1e-11,
+        maxerr=maxerr,
         inverse="sparsecholesky",
         dampfactor=0.7,
         printing=False,
@@ -853,6 +896,7 @@ def load_results(out_dir: str, geom: GeometricParameters, V_c: float):
     logger.info("Loaded solution from disk")
     return msh, u, u_volts
 
+
 def parse_range_input(input_str: str) -> list[float]:
     if ":" in input_str:
         parts = input_str.split(":")
@@ -870,26 +914,30 @@ def sort_and_validate_voltages(V_tip_values: list[float]) -> list[float]:
     """Sort voltages by absolute value and validate they don't cross zero"""
     if len(V_tip_values) == 0:
         raise ValueError("V_tip_values cannot be empty")
-    
+
     # Check if range crosses zero
     has_positive = any(v > 0 for v in V_tip_values)
     has_negative = any(v < 0 for v in V_tip_values)
-    
+
     if has_positive and has_negative:
         raise ValueError(
             f"V_tip range crosses zero (values: {V_tip_values}). "
             "Please specify separate ranges for positive and negative voltages."
         )
-    
+
     # Sort by absolute value
     return sorted(V_tip_values, key=abs)
+
 
 def main():
     parser = argparse.ArgumentParser(
         description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System."
     )
     parser.add_argument(
-        "--V_tip", type=str, default="2.0", help="Tip voltages (single value or range min:max:step)."
+        "--V_tip",
+        type=str,
+        default="2.0",
+        help="Tip voltages (single value or range min:max:step).",
     )
     parser.add_argument(
         "--tip_radius", type=float, default=45.0, help="Tip radius in nm."
@@ -929,6 +977,15 @@ def main():
         "--assume_full_ionization",
         action="store_true",
         help="Assume complete ionization of donors (overrides model to Boltzmann).",
+    )
+    parser.add_argument(
+        "--mesh_scale", type=float, default=1.0, help="Scaling factor for mesh size."
+    )
+    parser.add_argument(
+        "--maxerr",
+        type=float,
+        default=1e-11,
+        help="Maximum error tolerance for Newton solver.",
     )
     args, _ = parser.parse_known_args()
 
@@ -975,7 +1032,10 @@ def main():
 
     # Initialize geometric parameters
     geom_params = GeometricParameters(
-        l_sio2=args.l_sio2, tip_radius=args.tip_radius, tip_height=args.tip_height
+        l_sio2=args.l_sio2,
+        tip_radius=args.tip_radius,
+        tip_height=args.tip_height,
+        mesh_scale=args.mesh_scale,
     )
 
     V_tip_values = parse_range_input(args.V_tip)
@@ -1002,6 +1062,7 @@ def main():
         out_dir=args.out_dir,
         Feenstra=(args.model[0].upper() == "F"),
         assume_full_ionization=args.assume_full_ionization,
+        maxerr=args.maxerr,
     )
 
     end = datetime.now()
