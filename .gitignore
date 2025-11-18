@@ -1,5 +1,6 @@
 FEniCS/_*/
 NGSpy/_*/
+!NGSpy/_ring_radius_cache/
 
 **/__pycache__/
 
