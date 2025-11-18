@@ -52,8 +52,8 @@ for Rtip in $(seq 20 5 55); do
   for Htip in $(seq 3 0.5 18); do
     # Negative V_tip range: -8 to -0.5 (step 0.5)
     printf "%s %d %.1f %s/Rtip_%d_Htip_%.1f_Vneg\n" "-8:-0.5:0.5" "$Rtip" "$Htip" "$OUTPATH" "$Rtip" "$Htip"
-    # Positive V_tip range: 0 to 6 (step 0.5)
-    printf "%s %d %.1f %s/Rtip_%d_Htip_%.1f_Vpos\n" "0:6:0.5" "$Rtip" "$Htip" "$OUTPATH" "$Rtip" "$Htip"
+    # Positive V_tip range: 0 to 8 (step 0.5)
+    printf "%s %d %.1f %s/Rtip_%d_Htip_%.1f_Vpos\n" "0:8:0.5" "$Rtip" "$Htip" "$OUTPATH" "$Rtip" "$Htip"
   done
 done > $ARGSFILE
 NARGS=$(wc -l < $ARGSFILE)
@@ -65,7 +65,7 @@ echo "Using $NPROCS parallel processes"
 cat $ARGSFILE | xargs -n 4 -P $NPROCS sh -c '
     mkdir -p "$4"
     echo "[$(date "+%Y-%m-%d %H:%M:%S")] Running with V_tip=$1, R_tip=$2, H_tip=$3"
-    python main_fast.py --V_tip="$1" --tip_radius "$2" --tip_height "$3" --out_dir "$4" --sigma_s 10000000000 >> "$4/main.job.log" 2>&1 && \
+    python main_fast.py --V_tip="$1" --tip_radius "$2" --tip_height "$3" --out_dir "$4" --sigma_s 2000000000000 >> "$4/main.job.log" 2>&1 && \
     python post_fast.py "$4" >> "$4/post.job.log" 2>&1
 ' sh && \
 echo "All jobs completed."
