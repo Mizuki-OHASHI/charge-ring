@@ -9,7 +9,43 @@ import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main_fast import GeometricParameters, PhysicalParameters, load_results
+from main_fast import GeometricParameters, PhysicalParameters, create_mesh
+import ngsolve as ng
+
+
+def load_solution_vector(out_dir: str, fes) -> ng.GridFunction:
+    """
+    Load solution vector from saved files without regenerating mesh.
+
+    Args:
+        out_dir: Directory containing saved results
+        fes: Finite element space (must match the saved solution)
+
+    Returns:
+        GridFunction containing the loaded solution
+    """
+    meta_path = os.path.join(out_dir, "metadata.json")
+    if not os.path.isfile(meta_path):
+        raise FileNotFoundError(f"No metadata.json found in {out_dir}")
+
+    with open(meta_path) as f:
+        meta = json.load(f)
+
+    if meta["ndof"] != fes.ndof:
+        raise RuntimeError(f"DOF mismatch: saved={meta['ndof']} current={fes.ndof}")
+
+    u_dim_path = os.path.join(out_dir, "u_dimless.npy")
+    if not os.path.isfile(u_dim_path):
+        raise FileNotFoundError(f"No u_dimless.npy found in {out_dir}")
+
+    u_vec = np.load(u_dim_path)
+    if u_vec.size != fes.ndof:
+        raise RuntimeError("Vector length does not match current FES")
+
+    u = ng.GridFunction(fes, name="potential_dimless")
+    u.vec.FV().NumPy()[:] = u_vec
+
+    return u
 
 
 def find_vtip_subdirs(out_dir: str) -> list[tuple[str, float]]:
@@ -38,6 +74,8 @@ def find_vtip_subdirs(out_dir: str) -> list[tuple[str, float]]:
 def process_single_vtip(
     subdir: str,
     V_tip: float,
+    msh,
+    fes,
     geom_params: GeometricParameters,
     phys_params: PhysicalParameters,
     V_c: float,
@@ -46,34 +84,28 @@ def process_single_vtip(
     plot_charge_density: bool,
     plot_mesh: bool,
 ):
-    """Process a single V_tip directory and generate plots"""
+    """Process a single V_tip directory and generate plots
+
+    Args:
+        subdir: Subdirectory containing V_tip results
+        V_tip: Tip voltage value
+        msh: Pre-generated mesh (shared across all V_tip)
+        fes: Finite element space (shared across all V_tip)
+        geom_params: Geometric parameters
+        phys_params: Physical parameters
+        V_c: Characteristic voltage
+        assume_full_ionization: Whether to assume full ionization
+        plot_donor_ionization: Whether to plot donor ionization
+        plot_charge_density: Whether to plot charge density
+        plot_mesh: Whether to plot mesh
+    """
     print(f"\n{'=' * 60}")
     print(f"Processing V_tip = {V_tip:.3f} V")
     print(f"{'=' * 60}")
 
-    # Load results from this subdirectory
-    msh, u_dimless, _ = load_results(subdir, geom_params, V_c)
+    # Load solution vector from this subdirectory (no mesh regeneration)
+    u_dimless = load_solution_vector(subdir, fes)
     L_c = geom_params.L_c  # [m]
-    parser = argparse.ArgumentParser(description="Post-process NGSpy results")
-    parser.add_argument("out_dir", type=str, help="Output directory")
-    parser.add_argument(
-        "--plot_donor_ionization",
-        action="store_true",
-        help="Plot donor ionization profile",
-    )
-    parser.add_argument(
-        "--plot_charge_density",
-        action="store_true",
-        help="Plot charge density profile",
-    )
-    parser.add_argument(
-        "--plot_mesh", action="store_true", help="Plot mesh (for publication)"
-    )
-    args, _ = parser.parse_known_args()
-    out_dir = args.out_dir
-    plot_donor_ionization = args.plot_donor_ionization
-    plot_charge_density = args.plot_charge_density
-    plot_mesh = args.plot_mesh
     # --- 2D Potential Plot ---
     print("Creating 2D potential plot...")
 
@@ -855,11 +887,19 @@ def main():
         metadata = json.load(f)
     V_c = metadata["V_c"]
 
+    # Create mesh once (shared by all V_tip)
+    print("\nCreating mesh (once for all V_tip)...")
+    msh = create_mesh(geom_params)
+    fes = ng.H1(msh, order=1)
+    print(f"Mesh created: {fes.ndof} DOFs")
+
     # Process each V_tip directory
     for subdir, V_tip in vtip_dirs:
         process_single_vtip(
             subdir=subdir,
             V_tip=V_tip,
+            msh=msh,
+            fes=fes,
             geom_params=geom_params,
             phys_params=phys_params,
             V_c=V_c,
