@@ -1,61 +1,175 @@
 import argparse
 import json
 import os
+import re
 
+import matplotlib
 import matplotlib.pyplot as plt
+import ngsolve as ng
 import numpy as np
+
+matplotlib.use("Agg")  # Use non-GUI backend for faster plotting
+
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main_diamond import GeometricParameters, PhysicalParameters, load_results
+from main_diamond_fast import GeometricParameters, PhysicalParameters, create_mesh
 
 
 def exp_clamped(x, limit=100.0):
     return np.exp(np.clip(x, -limit, limit))
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Post-process NGSpy results")
-    parser.add_argument("out_dir", type=str, help="Output directory")
-    parser.add_argument(
-        "--plot_acceptor_ionization",
-        action="store_true",
-        help="Plot acceptor ionization profile",
-    )
-    parser.add_argument(
-        "--plot_charge_density",
-        action="store_true",
-        help="Plot charge density profile",
-    )
-    parser.add_argument(
-        "--dpi",
-        type=int,
-        default=150,
-    )
-    args, _ = parser.parse_known_args()
-    out_dir = args.out_dir
-    plot_acceptor_ionization = args.plot_acceptor_ionization
-    plot_charge_density = args.plot_charge_density
-    dpi = args.dpi
-    print(f"Post-processing results in {out_dir}...")
-    if not os.path.exists(out_dir):
-        raise FileNotFoundError(f"Output directory {out_dir} does not exist.")
+def load_solution_vector(out_dir: str, fes) -> ng.GridFunction:
+    """
+    Load solution vector from saved files without regenerating mesh.
 
-    # load params
-    with open(os.path.join(out_dir, "parameters.json"), "r") as f:
-        params = json.load(f)
-    with open(os.path.join(out_dir, "metadata.json"), "r") as f:
-        metadata = json.load(f)
-    geom_params_input = params["geometric"]
-    phys_params_input = params["physical"]
-    V_c = metadata["V_c"]
-    V_tip = params["simulation"]["V_tip"]
-    assume_full_ionization = params["simulation"].get("assume_full_ionization", False)
-    geom_params = GeometricParameters(**geom_params_input)
-    phys_params = PhysicalParameters(**phys_params_input)
-    phys_params.update_equilibrium_densities()
+    Args:
+        out_dir: Directory containing saved results
+        fes: Finite element space (must match the saved solution)
+
+    Returns:
+        GridFunction containing the loaded solution
+    """
+    meta_path = os.path.join(out_dir, "metadata.json")
+    if not os.path.isfile(meta_path):
+        raise FileNotFoundError(f"No metadata.json found in {out_dir}")
+
+    with open(meta_path) as f:
+        meta = json.load(f)
+
+    if meta["ndof"] != fes.ndof:
+        raise RuntimeError(f"DOF mismatch: saved={meta['ndof']} current={fes.ndof}")
+
+    u_dim_path = os.path.join(out_dir, "u_dimless.npy")
+    if not os.path.isfile(u_dim_path):
+        raise FileNotFoundError(f"No u_dimless.npy found in {out_dir}")
+
+    u_vec = np.load(u_dim_path)
+    if u_vec.size != fes.ndof:
+        raise RuntimeError("Vector length does not match current FES")
+
+    u = ng.GridFunction(fes, name="potential_dimless")
+    u.vec.FV().NumPy()[:] = u_vec
+
+    return u
+
+
+def precompute_mesh_geometry(msh, L_c: float):
+    """Precompute mesh geometry information for reuse across all V_tip.
+
+    Args:
+        msh: NGSolve mesh
+        L_c: Characteristic length [m]
+
+    Returns:
+        Dictionary containing precomputed geometry data
+    """
+    # Get mesh vertex coordinates
+    verts = np.array([v.point for v in msh.vertices])
+    x, y = verts[:, 0], verts[:, 1]
+    r_coords = verts[:, 0] * L_c * 1e9  # r coordinate [nm]
+    z_coords = verts[:, 1] * L_c * 1e9  # z coordinate [nm]
+
+    # Get triangle element vertex indices (for plotting)
+    tris = []
+    for el in msh.Elements(VOL):
+        tris.append([v.nr for v in el.vertices])
+    triangulation = Triangulation(x, y, np.array(tris))
+
+    # Plotting range
+    r_max = np.max(r_coords)
+    z_min, z_max = np.min(z_coords), np.max(z_coords)
+
+    return {
+        "verts": verts,
+        "x": x,
+        "y": y,
+        "r_coords": r_coords,
+        "z_coords": z_coords,
+        "triangulation": triangulation,
+        "r_max": r_max,
+        "z_min": z_min,
+        "z_max": z_max,
+    }
+
+
+def find_vtip_subdirs(out_dir: str, V_tip_range: str = None) -> list[tuple[str, float]]:
+    """Find V_tip_±X.XXV subdirectories and extract voltage values
+
+    Returns:
+        List of (subdir_path, V_tip_value) tuples, sorted by absolute V_tip value
+    """
+    pattern = re.compile(r"^V_tip_([+-]?\d+\.\d{2})V$")
+    vtip_dirs = []
+
+    V_tip_min, V_tip_max = -np.inf, np.inf
+    if V_tip_range:
+        V_tip_min_str, V_tip_max_str = V_tip_range.split(":")
+        V_tip_min = float(V_tip_min_str)
+        V_tip_max = float(V_tip_max_str)
+
+    for item in os.listdir(out_dir):
+        item_path = os.path.join(out_dir, item)
+        if os.path.isdir(item_path):
+            match = pattern.match(item)
+            if match:
+                V_tip = float(match.group(1))
+                if V_tip_min <= V_tip <= V_tip_max:
+                    vtip_dirs.append((item_path, V_tip))
+
+    # Sort by absolute value
+    vtip_dirs.sort(key=lambda x: abs(x[1]))
+
+    return vtip_dirs
+
+
+def process_single_vtip(
+    subdir: str,
+    V_tip: float,
+    msh,
+    fes,
+    mesh_geometry: dict,
+    geom_params: GeometricParameters,
+    phys_params: PhysicalParameters,
+    V_c: float,
+    assume_full_ionization: bool,
+    plot_acceptor_ionization: bool,
+    plot_charge_density: bool,
+    dpi: int,
+    use_feenstra: bool,
+):
+    """Process a single V_tip directory and generate plots
+
+    Args:
+        subdir: Subdirectory containing V_tip results
+        V_tip: Tip voltage value
+        msh: Pre-generated mesh (shared across all V_tip)
+        fes: Finite element space (shared across all V_tip)
+        mesh_geometry: Precomputed mesh geometry data (shared across all V_tip)
+        geom_params: Geometric parameters
+        phys_params: Physical parameters
+        V_c: Characteristic voltage
+        assume_full_ionization: Whether to assume full ionization
+        plot_acceptor_ionization: Whether to plot acceptor ionization
+        plot_charge_density: Whether to plot charge density
+        dpi: DPI for plots
+        use_feenstra: Whether to use Feenstra model
+    """
+    print(f"\n{'=' * 60}")
+    print(f"Processing V_tip = {V_tip:.3f} V")
+    print(f"{'=' * 60}")
+
+    # Load solution vector from this subdirectory (no mesh regeneration)
+    u_dimless = load_solution_vector(subdir, fes)
+
+    # Extract precomputed geometry
+    verts = mesh_geometry["verts"]
+    triangulation = mesh_geometry["triangulation"]
+    r_max = mesh_geometry["r_max"]
+    z_min = mesh_geometry["z_min"]
+    z_max = mesh_geometry["z_max"]
     L_c = geom_params.L_c  # [m]
-    msh, u_dimless, _ = load_results(out_dir, geom_params, V_c)
 
     print("Creating 2D potential profile grid (1 nm spacing)...")
     r_nm_values = np.linspace(0.0, 200.0, 201)
@@ -72,7 +186,7 @@ def main():
             except Exception:
                 continue
 
-    potential_dir = os.path.join(out_dir, "potential_2d_profile")
+    potential_dir = os.path.join(subdir, "potential_2d_profile")
     os.makedirs(potential_dir, exist_ok=True)
 
     np.savetxt(
@@ -152,8 +266,9 @@ def main():
     ax1.set_xlim(0, r_max)
     ax1.set_ylim(z_min, z_max)
     fig1.tight_layout()
-    fig1.savefig(os.path.join(out_dir, "potential_2d_plot.png"), dpi=dpi * 2)
-    print(f"Saved 2D plot to {os.path.join(out_dir, 'potential_2d_plot.png')}")
+    fig1.savefig(os.path.join(subdir, "potential_2d_plot.png"), dpi=dpi * 2)
+    plt.close(fig1)
+    print(f"Saved 2D plot to {os.path.join(subdir, 'potential_2d_plot.png')}")
 
     # --- Line Profile Plots ---
     print("Creating line profile plot...")
@@ -211,19 +326,20 @@ def main():
     ax2_r.grid(True)
 
     fig2.tight_layout()
-    fig2.savefig(os.path.join(out_dir, "potential_line_profiles.png"), dpi=dpi)
+    fig2.savefig(os.path.join(subdir, "potential_line_profiles.png"), dpi=dpi)
+    plt.close(fig2)
     print(
-        f"Saved line profiles to {os.path.join(out_dir, 'potential_line_profiles.png')}"
+        f"Saved line profiles to {os.path.join(subdir, 'potential_line_profiles.png')}"
     )
 
     # Save line profile data
     np.savetxt(
-        os.path.join(out_dir, "line_profile_vertical.txt"),
+        os.path.join(subdir, "line_profile_vertical.txt"),
         np.column_stack((valid_z, potential_z)),
         header="z_nm potential_V",
     )
     np.savetxt(
-        os.path.join(out_dir, "line_profile_horizontal.txt"),
+        os.path.join(subdir, "line_profile_horizontal.txt"),
         np.column_stack((valid_r, potential_r)),
         header="r_nm potential_V",
     )
@@ -318,19 +434,20 @@ def main():
 
         fig3.tight_layout()
         fig3.savefig(
-            os.path.join(out_dir, "acceptor_ionization_line_profiles.png"), dpi=dpi
+            os.path.join(subdir, "acceptor_ionization_line_profiles.png"), dpi=dpi
         )
+        plt.close(fig3)
         print(
-            f"Saved acceptor ionization profiles to {os.path.join(out_dir, 'acceptor_ionization_line_profiles.png')}"
+            f"Saved acceptor ionization profiles to {os.path.join(subdir, 'acceptor_ionization_line_profiles.png')}"
         )
 
         np.savetxt(
-            os.path.join(out_dir, "acceptor_ionization_vertical.txt"),
+            os.path.join(subdir, "acceptor_ionization_vertical.txt"),
             np.column_stack((valid_z_acceptor, np.array(Na_minus_z) * 1e-6)),
             header="z_nm Na_minus_cm-3",
         )
         np.savetxt(
-            os.path.join(out_dir, "acceptor_ionization_horizontal.txt"),
+            os.path.join(subdir, "acceptor_ionization_horizontal.txt"),
             np.column_stack((valid_r_acceptor, np.array(Na_minus_r) * 1e-6)),
             header="r_nm Na_minus_cm-3",
         )
@@ -338,8 +455,6 @@ def main():
 
     if plot_charge_density:
         print("Creating charge density line profiles...")
-
-        use_feenstra = metadata.get("Feenstra", True)
         Ef_dimless = phys_params.Ef / V_c
         Ec_dimless = phys_params.Ec / V_c
         Ev_dimless = phys_params.Ev / V_c
@@ -489,13 +604,14 @@ def main():
             ax4_r.set_xlim(0, max(valid_r_charge))
 
         fig4.tight_layout()
-        fig4.savefig(os.path.join(out_dir, "charge_density_line_profiles.png"), dpi=dpi)
+        fig4.savefig(os.path.join(subdir, "charge_density_line_profiles.png"), dpi=dpi)
+        plt.close(fig4)
         print(
-            f"Saved charge density profiles to {os.path.join(out_dir, 'charge_density_line_profiles.png')}"
+            f"Saved charge density profiles to {os.path.join(subdir, 'charge_density_line_profiles.png')}"
         )
 
         np.savetxt(
-            os.path.join(out_dir, "charge_density_vertical.txt"),
+            os.path.join(subdir, "charge_density_vertical.txt"),
             np.column_stack(
                 (
                     valid_z_charge,
@@ -507,7 +623,7 @@ def main():
             header="z_nm n_cm-3 p_cm-3 Na_minus_cm-3",
         )
         np.savetxt(
-            os.path.join(out_dir, "charge_density_horizontal.txt"),
+            os.path.join(subdir, "charge_density_horizontal.txt"),
             np.column_stack(
                 (
                     valid_r_charge,
@@ -519,6 +635,171 @@ def main():
             header="r_nm n_cm-3 p_cm-3 Na_minus_cm-3",
         )
         print("Saved charge density data to text files.")
+
+
+def create_comparison_plots(vtip_dirs: list[tuple[str, float]], out_dir: str):
+    """Create comparison plots overlaying all V_tip line profiles"""
+    print("\n" + "=" * 60)
+    print("Creating comparison plots...")
+    print("=" * 60)
+
+    comparison_dir = os.path.join(out_dir, "comparison_plots")
+    os.makedirs(comparison_dir, exist_ok=True)
+
+    # Collect data from all V_tip directories
+    all_data_vertical = []
+    all_data_horizontal = []
+
+    for subdir, V_tip in vtip_dirs:
+        vert_file = os.path.join(subdir, "line_profile_vertical.txt")
+        horiz_file = os.path.join(subdir, "line_profile_horizontal.txt")
+
+        if os.path.exists(vert_file):
+            data = np.loadtxt(vert_file)
+            all_data_vertical.append((V_tip, data[:, 0], data[:, 1]))
+
+        if os.path.exists(horiz_file):
+            data = np.loadtxt(horiz_file)
+            all_data_horizontal.append((V_tip, data[:, 0], data[:, 1]))
+
+    if not all_data_vertical and not all_data_horizontal:
+        print("No line profile data found for comparison.")
+        return
+
+    # Plot vertical comparison
+    if all_data_vertical:
+        fig_v, ax_v = plt.subplots(figsize=(8, 6))
+        for V_tip, z, potential in all_data_vertical:
+            ax_v.plot(z, potential, label=f"V_tip = {V_tip:.2f} V")
+        ax_v.set_xlabel("z (nm)")
+        ax_v.set_ylabel("Potential (V)")
+        ax_v.set_title("Vertical Line Profiles (r=0) - All V_tip")
+        ax_v.legend()
+        ax_v.grid(True)
+        fig_v.tight_layout()
+        fig_v.savefig(os.path.join(comparison_dir, "vertical_comparison.png"), dpi=150)
+        plt.close(fig_v)
+        print(f"Saved vertical comparison to {comparison_dir}")
+
+    # Plot horizontal comparison
+    if all_data_horizontal:
+        fig_h, ax_h = plt.subplots(figsize=(8, 6))
+        for V_tip, r, potential in all_data_horizontal:
+            ax_h.plot(r, potential, label=f"V_tip = {V_tip:.2f} V")
+        ax_h.set_xlabel("r (nm)")
+        ax_h.set_ylabel("Potential (V)")
+        ax_h.set_title("Horizontal Line Profiles - All V_tip")
+        ax_h.legend()
+        ax_h.grid(True)
+        fig_h.tight_layout()
+        fig_h.savefig(
+            os.path.join(comparison_dir, "horizontal_comparison.png"), dpi=150
+        )
+        plt.close(fig_h)
+        print(f"Saved horizontal comparison to {comparison_dir}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Post-process NGSpy results")
+    parser.add_argument("out_dir", type=str, help="Output directory")
+    parser.add_argument(
+        "--plot_acceptor_ionization",
+        action="store_true",
+        help="Plot acceptor ionization profile",
+    )
+    parser.add_argument(
+        "--plot_charge_density",
+        action="store_true",
+        help="Plot charge density profile",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=150,
+    )
+    parser.add_argument(
+        "--no_comparison",
+        action="store_true",
+        help="Skip comparison plots",
+    )
+    parser.add_argument(
+        "--V_tip_range", type=str, default=None, help="V_tip range to process (min:max)"
+    )
+    args, _ = parser.parse_known_args()
+    out_dir = args.out_dir
+
+    print(f"Post-processing results in {out_dir}...")
+    if not os.path.exists(out_dir):
+        raise FileNotFoundError(f"Output directory {out_dir} does not exist.")
+
+    # Load global parameters
+    params_file = os.path.join(out_dir, "parameters.json")
+    if not os.path.exists(params_file):
+        raise FileNotFoundError(f"No parameters.json found in {out_dir}")
+
+    with open(params_file, "r") as f:
+        params = json.load(f)
+
+    geom_params_input = params["geometric"]
+    phys_params_input = params["physical"]
+    assume_full_ionization = params["simulation"].get("assume_full_ionization", False)
+    geom_params = GeometricParameters(**geom_params_input)
+    phys_params = PhysicalParameters(**phys_params_input)
+    phys_params.update_equilibrium_densities()
+
+    # Get V_c from any metadata.json (should be the same for all)
+    vtip_dirs = find_vtip_subdirs(out_dir, V_tip_range=args.V_tip_range)
+
+    if not vtip_dirs:
+        raise FileNotFoundError(f"No V_tip_±X.XXV subdirectories found in {out_dir}")
+
+    print(f"Found {len(vtip_dirs)} V_tip directories:")
+    for subdir, V_tip in vtip_dirs:
+        print(f"  {os.path.basename(subdir)}: V_tip = {V_tip:.2f} V")
+
+    # Get V_c and use_feenstra from first subdirectory
+    first_metadata = os.path.join(vtip_dirs[0][0], "metadata.json")
+    with open(first_metadata, "r") as f:
+        metadata = json.load(f)
+    V_c = metadata["V_c"]
+    use_feenstra = metadata.get("Feenstra", True)
+
+    # Create mesh once (shared by all V_tip)
+    print("\nCreating mesh (once for all V_tip)...")
+    msh = create_mesh(geom_params)
+    fes = ng.H1(msh, order=1)
+    print(f"Mesh created: {fes.ndof} DOFs")
+
+    # Precompute mesh geometry (once for all V_tip)
+    print("Precomputing mesh geometry...")
+    mesh_geometry = precompute_mesh_geometry(msh, geom_params.L_c)
+    print(f"Mesh geometry precomputed: {len(mesh_geometry['verts'])} vertices")
+
+    # Process each V_tip directory
+    for subdir, V_tip in vtip_dirs:
+        process_single_vtip(
+            subdir,
+            V_tip,
+            msh,
+            fes,
+            mesh_geometry,
+            geom_params,
+            phys_params,
+            V_c,
+            assume_full_ionization,
+            args.plot_acceptor_ionization,
+            args.plot_charge_density,
+            args.dpi,
+            use_feenstra,
+        )
+
+    # Create comparison plots
+    if not args.no_comparison:
+        create_comparison_plots(vtip_dirs, out_dir)
+
+    print("\n" + "=" * 60)
+    print("Post-processing completed!")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
