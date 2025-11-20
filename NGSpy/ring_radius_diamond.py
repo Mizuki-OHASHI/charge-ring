@@ -35,55 +35,135 @@ def load_2d_profiles(dir_path):
     pattern = re.compile(
         r"Vtip_(?P<Vtip>-?\d+\.?\d*)_Rtip_(?P<Rtip>\d+\.?\d*)_Htip_(?P<Htip>\d+\.?\d*)"
     )
+    pattern_v2 = re.compile(  # Rtip_20_Htip_3.0_Vneg
+        r"Rtip_(?P<Rtip>\d+\.?\d*)_Htip_(?P<Htip>\d+\.?\d*)_V(?P<Vsign>neg|pos)"
+    )
+    pattern_v2_inner = re.compile(  # V_tip_+0.50V
+        r"V_tip_(?P<Vtip>[+-]?\d+\.?\d*)V"
+    )
     data_dirs = {}
     r_reference = None
     z_reference = None
+    version = None
 
     for entry in os.listdir(dir_path):
         match = pattern.match(entry)
-        if not match:
-            continue
+        if match:
+            if version is None:
+                version = 1
+                print("Detected directory naming version 1")
+            assert version == 1, "Mixed directory naming versions detected"
 
-        subdir = os.path.join(dir_path, entry, "potential_2d_profile")
-        if not os.path.isdir(subdir):
-            print(f"Warning: 'potential_2d_profile' not found in {entry}")
-            continue
+            subdir = os.path.join(dir_path, entry, "potential_2d_profile")
+            if not os.path.isdir(subdir):
+                print(f"Warning: 'potential_2d_profile' not found in {entry}")
+                continue
 
-        r_path = os.path.join(subdir, "r.txt")
-        z_path = os.path.join(subdir, "z.txt")
-        pot_path = os.path.join(subdir, "potential.txt")
+            r_path = os.path.join(subdir, "r.txt")
+            z_path = os.path.join(subdir, "z.txt")
+            pot_path = os.path.join(subdir, "potential.txt")
 
-        if not (os.path.isfile(r_path) and os.path.isfile(z_path) and os.path.isfile(pot_path)):
-            print(f"Warning: Missing axis or potential file in {entry}")
-            continue
+            if not (
+                os.path.isfile(r_path)
+                and os.path.isfile(z_path)
+                and os.path.isfile(pot_path)
+            ):
+                print(f"Warning: Missing axis or potential file in {entry}")
+                continue
 
-        r_data = np.loadtxt(r_path, comments="#")
-        z_data = np.loadtxt(z_path, comments="#")
-        potentials = np.loadtxt(pot_path, comments="#")
+            r_data = np.loadtxt(r_path, comments="#")
+            z_data = np.loadtxt(z_path, comments="#")
+            potentials = np.loadtxt(pot_path, comments="#")
 
-        r_values = r_data[:, 1]
-        z_values = z_data[:, 1]
+            r_values = r_data[:, 1]
+            z_values = z_data[:, 1]
 
-        if r_reference is None:
-            r_reference = r_values
-        elif not np.allclose(r_reference, r_values):
-            raise ValueError(f"r axis mismatch in {entry}")
+            if r_reference is None:
+                r_reference = r_values
+            elif not np.allclose(r_reference, r_values):
+                raise ValueError(f"r axis mismatch in {entry}")
 
-        if z_reference is None:
-            z_reference = z_values
-        elif not np.allclose(z_reference, z_values):
-            raise ValueError(f"z axis mismatch in {entry}")
+            if z_reference is None:
+                z_reference = z_values
+            elif not np.allclose(z_reference, z_values):
+                raise ValueError(f"z axis mismatch in {entry}")
 
-        if potentials.shape != (len(z_reference), len(r_reference)):
-            raise ValueError(
-                f"Potential grid shape {potentials.shape} does not match expected {(len(z_reference), len(r_reference))} in {entry}"
-            )
+            if potentials.shape != (len(z_reference), len(r_reference)):
+                raise ValueError(
+                    f"Potential grid shape {potentials.shape} does not match expected {(len(z_reference), len(r_reference))} in {entry}"
+                )
 
-        Vtip = float(match.group("Vtip"))
-        Rtip = float(match.group("Rtip"))
-        Htip = float(match.group("Htip"))
+            Vtip = float(match.group("Vtip"))
+            Rtip = float(match.group("Rtip"))
+            Htip = float(match.group("Htip"))
 
-        data_dirs[(Vtip, Rtip, Htip)] = potentials
+            data_dirs[(Vtip, Rtip, Htip)] = potentials
+        else:
+            match_v2 = pattern_v2.match(entry)
+            if match_v2:
+                if version is None:
+                    version = 2
+                    print("Detected directory naming version 2")
+                assert version == 2, "Mixed directory naming versions detected"
+                Rtip = float(match_v2.group("Rtip"))
+                Htip = float(match_v2.group("Htip"))
+
+                for entry2 in os.listdir(os.path.join(dir_path, entry)):
+                    match_inner = pattern_v2_inner.match(entry2)
+                    if match_inner:
+                        Vtip_str = match_inner.group("Vtip")
+                        Vtip_value = float(Vtip_str)
+                        if match_v2.group("Vsign") == "neg":
+                            Vtip_value = -abs(Vtip_value)
+                        else:
+                            Vtip_value = abs(Vtip_value)
+
+                        subdir = os.path.join(
+                            dir_path, entry, entry2, "potential_2d_profile"
+                        )
+                        if not os.path.isdir(subdir):
+                            print(
+                                f"Warning: 'potential_2d_profile' not found in {entry}/{entry2}"
+                            )
+                            continue
+
+                        r_path = os.path.join(subdir, "r.txt")
+                        z_path = os.path.join(subdir, "z.txt")
+                        pot_path = os.path.join(subdir, "potential.txt")
+
+                        if not (
+                            os.path.isfile(r_path)
+                            and os.path.isfile(z_path)
+                            and os.path.isfile(pot_path)
+                        ):
+                            print(
+                                f"Warning: Missing axis or potential file in {entry}/{entry2}"
+                            )
+                            continue
+
+                        r_data = np.loadtxt(r_path, comments="#")
+                        z_data = np.loadtxt(z_path, comments="#")
+                        potentials = np.loadtxt(pot_path, comments="#")
+
+                        r_values = r_data[:, 1]
+                        z_values = z_data[:, 1]
+
+                        if r_reference is None:
+                            r_reference = r_values
+                        elif not np.allclose(r_reference, r_values):
+                            raise ValueError(f"r axis mismatch in {entry}/{entry2}")
+
+                        if z_reference is None:
+                            z_reference = z_values
+                        elif not np.allclose(z_reference, z_values):
+                            raise ValueError(f"z axis mismatch in {entry}/{entry2}")
+
+                        if potentials.shape != (len(z_reference), len(r_reference)):
+                            raise ValueError(
+                                f"Potential grid shape {potentials.shape} does not match expected {(len(z_reference), len(r_reference))} in {entry}/{entry2}"
+                            )
+
+                        data_dirs[(Vtip_value, Rtip, Htip)] = potentials
 
     if not data_dirs:
         raise ValueError(f"No valid potential data found under {dir_path}")
@@ -224,7 +304,9 @@ if __name__ == "__main__":
 
         if not os.path.exists("_ring_radius_cache"):
             os.makedirs("_ring_radius_cache")
-        cache_path = f"_ring_radius_cache/{dir_path.replace('./', '').replace('/', '+')}.npz"
+        cache_path = (
+            f"_ring_radius_cache/{dir_path.replace('./', '').replace('/', '+')}.npz"
+        )
         Vtip_values = np.array(Vtip_values)
         Rtip_values = np.array(Rtip_values)
         Htip_values = np.array(Htip_values)
@@ -258,7 +340,15 @@ if __name__ == "__main__":
         print(f"r values: {fmt_list(r)}")
         print(f"z values: {fmt_list(z)}")
 
-    print("Shapes:", Vtip_values.shape, Rtip_values.shape, Htip_values.shape, r.shape, z.shape, potentials.shape)
+    print(
+        "Shapes:",
+        Vtip_values.shape,
+        Rtip_values.shape,
+        Htip_values.shape,
+        r.shape,
+        z.shape,
+        potentials.shape,
+    )
 
     # Example usage
     print("\n--- Example: Creating ring radius function ---")

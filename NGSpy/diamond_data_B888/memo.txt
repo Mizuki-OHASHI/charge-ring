@@ -1,0 +1,3 @@
+・[B]=1.3×10^17 cm-3
+・ダイヤとPtの仕事関数の差を加味して、CPD=0.27Vで計算
+・s sweepではV_tip=-2V, V_tip sweepではs=3nm

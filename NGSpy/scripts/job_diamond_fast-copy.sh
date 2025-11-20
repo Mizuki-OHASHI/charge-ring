@@ -65,7 +65,7 @@ echo "Using $NPROCS parallel processes"
 cat $ARGSFILE | xargs -n 4 -P $NPROCS sh -c '
     mkdir -p "$4"
     echo "[$(date "+%Y-%m-%d %H:%M:%S")] Running with V_tip=$1, R_tip=$2, H_tip=$3"
-    python main_diamond_fast.py --V_tip="$1" --tip_radius "$2" --tip_height "$3" --out_dir "$4" --sigma_s=0 --Na=1.3E17 >> "$4/main.job.log" 2>&1 && \
+    python main_diamond_fast.py --V_tip="$1" --tip_radius "$2" --tip_height "$3" --out_dir "$4" --sigma_s=-5E11 --Na=1.3E17 >> "$4/main.job.log" 2>&1 && \
     python post_diamond_fast.py "$4" >> "$4/post.job.log" 2>&1
 ' sh && \
 echo "All jobs completed."
