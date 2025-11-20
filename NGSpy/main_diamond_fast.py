@@ -333,13 +333,27 @@ def create_mesh(geom: GeometricParameters):
 def run_fem_simulation(
     phys: PhysicalParameters,
     geom: GeometricParameters,
-    V_tip: float,
+    V_tip_values: list[float],
     Feenstra: bool,
     out_dir: str,
     assume_full_ionization: bool,
+    maxerr=1e-11,
 ):
-    """Run the FEM simulation using NGSolve"""
+    """Run the FEM simulation using NGSolve for multiple V_tip values
 
+    Optimizations:
+    - Mesh is created once and reused for all V_tip values
+    - V_tip values are sorted by absolute value for smooth convergence
+    - For i > 0, use previous solution as warm start and try direct Newton
+    - Fall back to partial homotopy if direct Newton fails
+    """
+
+    # Sort and validate voltages
+    V_tip_sorted = sort_and_validate_voltages(V_tip_values)
+    logger.info(f"Processing V_tip values in order: {V_tip_sorted}")
+
+    # Create mesh once
+    logger.info("Creating mesh (this will be reused for all V_tip values)...")
     msh = create_mesh(geom)
     L_c = geom.L_c
     V_c = const.k * phys.T / const.e  # Thermal voltage [V]
@@ -361,7 +375,7 @@ def run_fem_simulation(
     homotopy_charge = ng.Parameter(0.0)
     homotopy_sigma = ng.Parameter(0.0)
 
-    # Define weak form
+    # Define weak form (once, will be reused)
     a = _setup_weak_form(
         fes,
         epsilon_r,
@@ -376,17 +390,34 @@ def run_fem_simulation(
         assume_full_ionization,
     )
 
-    # Set boundary conditions
-    u.Set(0, definedon=msh.Boundaries("ground"))  # Dirichlet BC at ground
-    u.Set(V_tip / V_c, definedon=msh.Boundaries("tip"))  # Dirichlet BC at tip
+    # Loop through V_tip values
+    for i, V_tip in enumerate(V_tip_sorted):
+        logger.info(f"{'=' * 60}")
+        logger.info(f"Solving for V_tip = {V_tip:.3f} V ({i + 1}/{len(V_tip_sorted)})")
+        logger.info(f"{'=' * 60}")
 
-    # Compute initial solution with linear problem (Laplace equation)
-    _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh)
+        # Set boundary conditions
+        u.Set(0, definedon=msh.Boundaries("ground"))  # Dirichlet BC at ground
+        u.Set(V_tip / V_c, definedon=msh.Boundaries("tip"))  # Dirichlet BC at tip
 
-    # Solve nonlinear problem with homotopy method
-    solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma)
+        if i == 0:
+            # First voltage: full procedure (linear warm-start + homotopy)
+            logger.info("First V_tip: performing full initialization...")
+            _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh)
+            solve_with_homotopy(
+                a, u, fes, msh, homotopy_charge, homotopy_sigma, maxerr=maxerr
+            )
+        else:
+            # Subsequent voltages: try direct Newton with fallback
+            logger.info("Using previous solution as warm start...")
+            solve_with_direct_newton(
+                a, u, fes, msh, homotopy_charge, homotopy_sigma, maxerr=maxerr
+            )
 
-    save_results(msh, u, epsilon_r, V_c, Feenstra, out_dir)
+        # Save results in subdirectory
+        out_subdir = os.path.join(out_dir, f"V_tip_{V_tip:+.2f}V")
+        save_results(msh, u, epsilon_r, V_c, Feenstra, out_subdir)
+        logger.info(f"Results saved to {out_subdir}")
 
 
 def _setup_weak_form(
@@ -585,7 +616,7 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
         logger.info(f"  [Linear Warm-up] Solved at V_tip = {v_val:.2f} V")
 
 
-def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma):
+def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma, maxerr=1e-11):
     """Solve the nonlinear Poisson equation using homotopy method
 
     Stages:
@@ -594,13 +625,96 @@ def solve_with_homotopy(a, u, fes, msh, homotopy_charge, homotopy_sigma):
     """
 
     homotopy_sigma.Set(0.0)
-    _solve_homotopy_stage(a, u, fes, msh, homotopy_charge, "Space Charge")
+    _solve_homotopy_stage(
+        a, u, fes, msh, homotopy_charge, "Space Charge", maxerr=maxerr
+    )
 
     homotopy_charge.Set(1.0)
-    _solve_homotopy_stage(a, u, fes, msh, homotopy_sigma, "Interface Charge")
+    _solve_homotopy_stage(
+        a, u, fes, msh, homotopy_sigma, "Interface Charge", maxerr=maxerr
+    )
 
 
-def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
+def solve_with_direct_newton(
+    a, u, fes, msh, homotopy_charge, homotopy_sigma, fallback_theta=0.8, maxerr=1e-11
+):
+    """Solve directly with Newton method (homotopy already at 1.0)
+
+    If Newton fails to converge, fall back to partial homotopy from fallback_theta to 1.0
+    """
+    logger.info("--- Attempting direct Newton solve (homotopy = 1.0) ---")
+
+    homotopy_charge.Set(1.0)
+    homotopy_sigma.Set(1.0)
+
+    freedofs = fes.FreeDofs()
+    freedofs &= ~fes.GetDofs(msh.Boundaries("ground"))
+    freedofs &= ~fes.GetDofs(msh.Boundaries("tip"))
+
+    newton_kwargs = dict(
+        freedofs=freedofs,
+        maxit=100,
+        maxerr=maxerr,
+        inverse="sparsecholesky",
+        dampfactor=0.7,
+        printing=False,
+    )
+
+    a.Assemble()
+
+    try:
+        converged, iter = Newton(a, u, **newton_kwargs)
+        if converged < 0:
+            raise RuntimeError("Newton solver did not converge")
+        logger.info(f"  [Direct Newton] Converged in {iter} iterations.")
+        return
+    except Exception as exc:
+        logger.warning(f"  [Direct Newton] Failed: {exc}")
+        logger.info(
+            f"  Falling back to partial homotopy from θ={fallback_theta:.2f} to 1.0"
+        )
+
+        # Fallback: run homotopy from fallback_theta to 1.0 for both parameters
+        backup = ng.GridFunction(fes)
+        backup.vec.data = u.vec
+
+        # First do charge homotopy
+        homotopy_sigma.Set(fallback_theta)
+        theta = fallback_theta
+        step = 0.1
+        min_step = 1e-4
+
+        while theta < 1.0 - 1e-12:
+            trial = min(1.0, theta + step)
+            homotopy_sigma.Set(trial)
+            a.Assemble()
+
+            try:
+                converged, iter = Newton(a, u, **newton_kwargs)
+                if converged < 0:
+                    raise RuntimeError("Newton solver did not converge")
+                theta = trial
+                backup.vec.data = u.vec
+                logger.info(
+                    f"  [Fallback Homotopy: θ={theta:.3f}] Converged in {iter} iterations."
+                )
+                if step < 0.5:
+                    step *= 1.5
+            except Exception:
+                u.vec.data = backup.vec
+                step *= 0.5
+                logger.warning(
+                    f"  [Fallback Homotopy: θ→{trial:.3f}] Failed. Reducing step to {step:.4f}."
+                )
+                if step < min_step:
+                    raise RuntimeError(
+                        "Fallback homotopy failed: step size became too small."
+                    )
+
+
+def _solve_homotopy_stage(
+    a, u, fes, msh, homotopy_param, stage_name: str, maxerr=1e-11
+):
     logger.info(f"--- Starting Homotopy Stage: {stage_name} ---")
 
     theta = 0.0
@@ -617,7 +731,7 @@ def _solve_homotopy_stage(a, u, fes, msh, homotopy_param, stage_name: str):
     newton_kwargs = dict(
         freedofs=freedofs,
         maxit=100,
-        maxerr=1e-10,
+        maxerr=maxerr,
         inverse="sparsecholesky",
         dampfactor=0.7,
         printing=False,
@@ -759,12 +873,47 @@ def load_results(out_dir: str, geom: GeometricParameters, V_c: float):
     return msh, u, u_volts
 
 
+def parse_range_input(input_str: str) -> list[float]:
+    if ":" in input_str:
+        parts = input_str.split(":")
+        if len(parts) != 3:
+            raise ValueError("Range input must be in the format min:max:step")
+        min_val = float(parts[0])
+        max_val = float(parts[1])
+        step = float(parts[2])
+        return list(np.arange(min_val, max_val + step, step))
+    else:
+        return [float(input_str)]
+
+
+def sort_and_validate_voltages(V_tip_values: list[float]) -> list[float]:
+    """Sort voltages by absolute value and validate they don't cross zero"""
+    if len(V_tip_values) == 0:
+        raise ValueError("V_tip_values cannot be empty")
+
+    # Check if range crosses zero
+    has_positive = any(v > 0 for v in V_tip_values)
+    has_negative = any(v < 0 for v in V_tip_values)
+
+    if has_positive and has_negative:
+        raise ValueError(
+            f"V_tip range crosses zero (values: {V_tip_values}). "
+            "Please specify separate ranges for positive and negative voltages."
+        )
+
+    # Sort by absolute value
+    return sorted(V_tip_values, key=abs)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System."
     )
     parser.add_argument(
-        "--V_tip", type=float, default=2.0, help="Tip voltage in Volts."
+        "--V_tip",
+        type=str,
+        default="2.0",
+        help="Tip voltages (single value or range min:max:step).",
     )
     parser.add_argument(
         "--tip_radius", type=float, default=45.0, help="Tip radius in nm."
@@ -810,6 +959,12 @@ def main():
         "--assume_full_ionization",
         action="store_true",
         help="Assume complete ionization of donors (overrides model to Boltzmann).",
+    )
+    parser.add_argument(
+        "--maxerr",
+        type=float,
+        default=1e-11,
+        help="Maximum error tolerance for Newton solver.",
     )
     args, _ = parser.parse_known_args()
 
@@ -857,12 +1012,14 @@ def main():
         tip_height=args.tip_height,
     )
 
+    V_tip_values = parse_range_input(args.V_tip)
+
     # Save parameters to JSON file
     all_params = {
         "physical": asdict(phys_params),
         "geometric": asdict(geom_params),
         "simulation": {
-            "V_tip": args.V_tip,
+            "V_tips": V_tip_values,
             "model": args.model,
             "assume_full_ionization": args.assume_full_ionization,
         },
@@ -875,10 +1032,11 @@ def main():
     run_fem_simulation(
         phys=phys_params,
         geom=geom_params,
-        V_tip=args.V_tip,
+        V_tip_values=V_tip_values,
         out_dir=args.out_dir,
         Feenstra=(args.model[0].upper() == "F"),
         assume_full_ionization=args.assume_full_ionization,
+        maxerr=args.maxerr,
     )
 
     end = datetime.now()
