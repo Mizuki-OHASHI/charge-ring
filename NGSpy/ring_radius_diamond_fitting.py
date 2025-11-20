@@ -1,21 +1,13 @@
-import sys
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import mpl_backend_ssh  # noqa: F401
 
 
-def load_experimental_data():
-    data_Vtip_sweep = np.loadtxt(
-        "diamond_data_6B3645/exp_data_diamond_6B3645.csv",
-        delimiter=",",
-        skiprows=1,
-    )
-    data_Htip_sweep = np.loadtxt(
-        "diamond_data_6B3645/exp_data_z_diamond_6B3645.csv",
-        delimiter=",",
-        skiprows=1,
-    )
+def load_experimental_data(exp_vtip_path, exp_htip_path):
+    data_Vtip_sweep = np.loadtxt(exp_vtip_path, delimiter=",", skiprows=1)
+    data_Htip_sweep = np.loadtxt(exp_htip_path, delimiter=",", skiprows=1)
     return data_Vtip_sweep, data_Htip_sweep
 
 
@@ -30,12 +22,20 @@ def load_simulation_data(cache_path):
     return Vtip_values, Rtip_values, Htip_values, z, r, potentials
 
 
-def main():
-    if len(sys.argv) <= 1:
-        print("Usage: python ring_radius_diamond_fitting.py <cache_path>")
-        sys.exit(1)
-    sim_path = sys.argv[1]
-    exp_Vtip_sweep, exp_Htip_sweep = load_experimental_data()
+def main(
+    sim_path,
+    exp_vtip_path,
+    exp_htip_path,
+    *,
+    fixed_Vtip,
+    fixed_Htip,
+    exp_zoffset,
+    exp_vtip_offset,
+):
+    exp_Vtip_sweep, exp_Htip_sweep = load_experimental_data(
+        exp_vtip_path, exp_htip_path
+    )
+    exp_Htip_sweep[:, 0] += exp_zoffset
     Vtip_values, Rtip_values, Htip_values, z, r, potentials = load_simulation_data(
         sim_path
     )
@@ -43,12 +43,11 @@ def main():
         f"{Vtip_values.shape=}, {Rtip_values.shape=}, {Htip_values.shape=}, {z.shape=}, {r.shape=}, {potentials.shape=}"
     )
     # Vtip_values.shape=(13,), Rtip_values.shape=(9,), Htip_values.shape=(27,), z.shape=(101,), r.shape=(201,), potentials.shape=(13, 9, 27, 101, 201)
+    Vtip_values += exp_vtip_offset
 
-    tip_radius = 45.0
-    ring_z = -5.0
+    tip_radius = 40.0
+    ring_z = -50.0
 
-    fixed_Vtip = 2.0
-    fixed_Htip = 5.5
     fixed_Vtip_idx = np.abs(Vtip_values - fixed_Vtip).argmin()
     fixed_Htip_idx = np.abs(Htip_values - fixed_Htip).argmin()
 
@@ -133,4 +132,62 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--cache",
+        type=str,
+        required=True,
+        help="Path to cached simulation data file",
+    )
+    parser.add_argument(
+        "--exp_vtip",
+        type=str,
+        required=True,
+        help="Path to experimental Vtip sweep data file",
+    )
+    parser.add_argument(
+        "--exp_htip",
+        type=str,
+        required=True,
+        help="Path to experimental Htip sweep data file",
+    )
+    parser.add_argument(
+        "--fixed_vtip",
+        type=float,
+        default=2.0,
+        help="Fixed Vtip (V) value for Htip sweep plot",
+    )
+    parser.add_argument(
+        "--fixed_htip",
+        type=float,
+        default=5.5,
+        help="Fixed Htip (nm) value for Vtip sweep plot",
+    )
+    parser.add_argument(
+        "--exp_zoffset",
+        type=float,
+        default=0.0,
+        help="Experimental Z offset (nm)",
+    )
+    parser.add_argument(
+        "--exp_vtip_offset",
+        "--cpd",
+        type=float,
+        default=0.0,
+        help="Experimental Vtip offset (V)",
+    )
+    args, unknown = parser.parse_known_args()
+    if unknown:
+        raise ValueError(f"Unknown arguments: {unknown}")
+    sim_path = args.cache
+
+    print(dict(**vars(args)))
+    main(
+        sim_path,
+        args.exp_vtip,
+        args.exp_htip,
+        fixed_Vtip=args.fixed_vtip,
+        fixed_Htip=args.fixed_htip,
+        exp_zoffset=args.exp_zoffset,
+        exp_vtip_offset=args.exp_vtip_offset,
+    )

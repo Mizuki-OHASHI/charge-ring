@@ -1,6 +1,5 @@
 FEniCS/_*/
 NGSpy/_*/
-!NGSpy/_ring_radius_cache/
 
 **/__pycache__/
 
@@ -8,3 +7,4 @@ NGSpy/outputs/
 NGSpy/outputs_diamond/
 NGSpy/diamond_data_6B3645/
 NGSpy/diamond_data.zip
+NGSpy/diamond_data_B888.zip

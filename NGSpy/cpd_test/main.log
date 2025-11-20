@@ -1,0 +1,197 @@
+2025-11-18 15:49:11 [INFO] Started simulation at 2025-11-18 15:49:11.655713
+2025-11-18 15:49:11 [INFO] Processing V_tip values in order: [np.float64(0.01), np.float64(0.02), np.float64(0.03), np.float64(0.04), np.float64(0.05), np.float64(0.060000000000000005), np.float64(0.06999999999999999), np.float64(0.08), np.float64(0.09), np.float64(0.09999999999999999), np.float64(0.11), np.float64(0.12), np.float64(0.13), np.float64(0.14), np.float64(0.15000000000000002), np.float64(0.16), np.float64(0.17), np.float64(0.18000000000000002), np.float64(0.19)]
+2025-11-18 15:49:11 [INFO] Creating mesh (this will be reused for all V_tip values)...
+2025-11-18 15:49:11 [INFO] Geometry defined with:
+2025-11-18 15:49:11 [INFO]   - Domain radius: 500.00
+2025-11-18 15:49:11 [INFO]   - SiC depth: 195.00
+2025-11-18 15:49:11 [INFO]   - SiO2 thickness: 5.00
+2025-11-18 15:49:11 [INFO]   - Vacuum height: 200.00
+2025-11-18 15:49:11 [INFO]   - Tip radius: 45.00
+2025-11-18 15:49:11 [INFO]   - Tip height: 8.00
+2025-11-18 15:49:11 [INFO] Checking geometry integrity...
+2025-11-18 15:49:11 [INFO]   - Number of points defined: 17
+2025-11-18 15:49:11 [INFO] Starting mesh generation...
+2025-11-18 15:49:11 [INFO]   (This may take a while for complex geometries...)
+2025-11-18 15:49:12 [INFO] Mesh generation completed
+2025-11-18 15:49:12 [INFO] Mesh generated with 15617 elements and 7985 vertices
+2025-11-18 15:49:12 [INFO] {
+  "L_c": 1e-09,
+  "V_c": 0.025851999786435535,
+  "C0": 6.999508091037586e-25,
+  "Ef_dimless": 119.46525458332866,
+  "Ec_dimless": 126.10243025417755,
+  "Ev_dimless": 0.0,
+  "Edh_dimless": 121.30589609727016,
+  "Edc_dimless": 123.54943626743653,
+  "lambda_ff": 0.0019999999999999996,
+  "sigma_s_target": 6.999508091037585,
+  "Feenstra": true
+}
+2025-11-18 15:49:12 [INFO] ============================================================
+2025-11-18 15:49:12 [INFO] Solving for V_tip = 0.010 V (1/19)
+2025-11-18 15:49:12 [INFO] ============================================================
+2025-11-18 15:49:12 [INFO] First V_tip: performing full initialization...
+2025-11-18 15:49:12 [INFO] Performing warm-start with linear Poisson equation...
+2025-11-18 15:49:12 [INFO]   [Linear Warm-up] Solved at V_tip = 0.00 V
+2025-11-18 15:49:12 [INFO]   [Linear Warm-up] Solved at V_tip = 0.01 V
+2025-11-18 15:49:12 [INFO]   [Linear Warm-up] Solved at V_tip = 0.01 V
+2025-11-18 15:49:12 [INFO]   [Linear Warm-up] Solved at V_tip = 0.01 V
+2025-11-18 15:49:12 [INFO] --- Starting Homotopy Stage: Space Charge ---
+2025-11-18 15:49:12 [INFO]   [Space Charge Homotopy: θ=0.100] Converged in 5 Newton iterations.
+2025-11-18 15:49:13 [INFO]   [Space Charge Homotopy: θ=0.250] Converged in 5 Newton iterations.
+2025-11-18 15:49:13 [INFO]   [Space Charge Homotopy: θ=0.475] Converged in 4 Newton iterations.
+2025-11-18 15:49:13 [INFO]   [Space Charge Homotopy: θ=0.812] Converged in 4 Newton iterations.
+2025-11-18 15:49:13 [INFO]   [Space Charge Homotopy: θ=1.000] Converged in 4 Newton iterations.
+2025-11-18 15:49:13 [INFO] --- Starting Homotopy Stage: Interface Charge ---
+2025-11-18 15:49:14 [INFO]   [Interface Charge Homotopy: θ=0.100] Converged in 6 Newton iterations.
+2025-11-18 15:49:14 [INFO]   [Interface Charge Homotopy: θ=0.250] Converged in 6 Newton iterations.
+2025-11-18 15:49:15 [INFO]   [Interface Charge Homotopy: θ=0.475] Converged in 6 Newton iterations.
+2025-11-18 15:49:15 [INFO]   [Interface Charge Homotopy: θ=0.812] Converged in 6 Newton iterations.
+2025-11-18 15:49:15 [INFO]   [Interface Charge Homotopy: θ=1.000] Converged in 6 Newton iterations.
+2025-11-18 15:49:15 [INFO] Saved results to cpd_test/V_tip_+0.01V
+2025-11-18 15:49:15 [INFO] Results saved to cpd_test/V_tip_+0.01V
+2025-11-18 15:49:15 [INFO] ============================================================
+2025-11-18 15:49:15 [INFO] Solving for V_tip = 0.020 V (2/19)
+2025-11-18 15:49:15 [INFO] ============================================================
+2025-11-18 15:49:15 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:15 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:16 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:16 [INFO] Saved results to cpd_test/V_tip_+0.02V
+2025-11-18 15:49:16 [INFO] Results saved to cpd_test/V_tip_+0.02V
+2025-11-18 15:49:16 [INFO] ============================================================
+2025-11-18 15:49:16 [INFO] Solving for V_tip = 0.030 V (3/19)
+2025-11-18 15:49:16 [INFO] ============================================================
+2025-11-18 15:49:16 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:16 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:17 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:17 [INFO] Saved results to cpd_test/V_tip_+0.03V
+2025-11-18 15:49:17 [INFO] Results saved to cpd_test/V_tip_+0.03V
+2025-11-18 15:49:17 [INFO] ============================================================
+2025-11-18 15:49:17 [INFO] Solving for V_tip = 0.040 V (4/19)
+2025-11-18 15:49:17 [INFO] ============================================================
+2025-11-18 15:49:17 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:17 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:18 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:18 [INFO] Saved results to cpd_test/V_tip_+0.04V
+2025-11-18 15:49:18 [INFO] Results saved to cpd_test/V_tip_+0.04V
+2025-11-18 15:49:18 [INFO] ============================================================
+2025-11-18 15:49:18 [INFO] Solving for V_tip = 0.050 V (5/19)
+2025-11-18 15:49:18 [INFO] ============================================================
+2025-11-18 15:49:18 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:18 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:19 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:19 [INFO] Saved results to cpd_test/V_tip_+0.05V
+2025-11-18 15:49:19 [INFO] Results saved to cpd_test/V_tip_+0.05V
+2025-11-18 15:49:19 [INFO] ============================================================
+2025-11-18 15:49:19 [INFO] Solving for V_tip = 0.060 V (6/19)
+2025-11-18 15:49:19 [INFO] ============================================================
+2025-11-18 15:49:19 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:19 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:19 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:19 [INFO] Saved results to cpd_test/V_tip_+0.06V
+2025-11-18 15:49:19 [INFO] Results saved to cpd_test/V_tip_+0.06V
+2025-11-18 15:49:19 [INFO] ============================================================
+2025-11-18 15:49:19 [INFO] Solving for V_tip = 0.070 V (7/19)
+2025-11-18 15:49:19 [INFO] ============================================================
+2025-11-18 15:49:19 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:19 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:20 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:20 [INFO] Saved results to cpd_test/V_tip_+0.07V
+2025-11-18 15:49:20 [INFO] Results saved to cpd_test/V_tip_+0.07V
+2025-11-18 15:49:20 [INFO] ============================================================
+2025-11-18 15:49:20 [INFO] Solving for V_tip = 0.080 V (8/19)
+2025-11-18 15:49:20 [INFO] ============================================================
+2025-11-18 15:49:20 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:20 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:21 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:21 [INFO] Saved results to cpd_test/V_tip_+0.08V
+2025-11-18 15:49:21 [INFO] Results saved to cpd_test/V_tip_+0.08V
+2025-11-18 15:49:21 [INFO] ============================================================
+2025-11-18 15:49:21 [INFO] Solving for V_tip = 0.090 V (9/19)
+2025-11-18 15:49:21 [INFO] ============================================================
+2025-11-18 15:49:21 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:21 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:22 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:22 [INFO] Saved results to cpd_test/V_tip_+0.09V
+2025-11-18 15:49:22 [INFO] Results saved to cpd_test/V_tip_+0.09V
+2025-11-18 15:49:22 [INFO] ============================================================
+2025-11-18 15:49:22 [INFO] Solving for V_tip = 0.100 V (10/19)
+2025-11-18 15:49:22 [INFO] ============================================================
+2025-11-18 15:49:22 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:22 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:23 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:23 [INFO] Saved results to cpd_test/V_tip_+0.10V
+2025-11-18 15:49:23 [INFO] Results saved to cpd_test/V_tip_+0.10V
+2025-11-18 15:49:23 [INFO] ============================================================
+2025-11-18 15:49:23 [INFO] Solving for V_tip = 0.110 V (11/19)
+2025-11-18 15:49:23 [INFO] ============================================================
+2025-11-18 15:49:23 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:23 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:23 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:23 [INFO] Saved results to cpd_test/V_tip_+0.11V
+2025-11-18 15:49:23 [INFO] Results saved to cpd_test/V_tip_+0.11V
+2025-11-18 15:49:23 [INFO] ============================================================
+2025-11-18 15:49:23 [INFO] Solving for V_tip = 0.120 V (12/19)
+2025-11-18 15:49:23 [INFO] ============================================================
+2025-11-18 15:49:23 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:23 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:24 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:24 [INFO] Saved results to cpd_test/V_tip_+0.12V
+2025-11-18 15:49:24 [INFO] Results saved to cpd_test/V_tip_+0.12V
+2025-11-18 15:49:24 [INFO] ============================================================
+2025-11-18 15:49:24 [INFO] Solving for V_tip = 0.130 V (13/19)
+2025-11-18 15:49:24 [INFO] ============================================================
+2025-11-18 15:49:24 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:24 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:25 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:25 [INFO] Saved results to cpd_test/V_tip_+0.13V
+2025-11-18 15:49:25 [INFO] Results saved to cpd_test/V_tip_+0.13V
+2025-11-18 15:49:25 [INFO] ============================================================
+2025-11-18 15:49:25 [INFO] Solving for V_tip = 0.140 V (14/19)
+2025-11-18 15:49:25 [INFO] ============================================================
+2025-11-18 15:49:25 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:25 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:26 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:26 [INFO] Saved results to cpd_test/V_tip_+0.14V
+2025-11-18 15:49:26 [INFO] Results saved to cpd_test/V_tip_+0.14V
+2025-11-18 15:49:26 [INFO] ============================================================
+2025-11-18 15:49:26 [INFO] Solving for V_tip = 0.150 V (15/19)
+2025-11-18 15:49:26 [INFO] ============================================================
+2025-11-18 15:49:26 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:26 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:27 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:27 [INFO] Saved results to cpd_test/V_tip_+0.15V
+2025-11-18 15:49:27 [INFO] Results saved to cpd_test/V_tip_+0.15V
+2025-11-18 15:49:27 [INFO] ============================================================
+2025-11-18 15:49:27 [INFO] Solving for V_tip = 0.160 V (16/19)
+2025-11-18 15:49:27 [INFO] ============================================================
+2025-11-18 15:49:27 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:27 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:27 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:27 [INFO] Saved results to cpd_test/V_tip_+0.16V
+2025-11-18 15:49:27 [INFO] Results saved to cpd_test/V_tip_+0.16V
+2025-11-18 15:49:27 [INFO] ============================================================
+2025-11-18 15:49:27 [INFO] Solving for V_tip = 0.170 V (17/19)
+2025-11-18 15:49:27 [INFO] ============================================================
+2025-11-18 15:49:27 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:27 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:28 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:28 [INFO] Saved results to cpd_test/V_tip_+0.17V
+2025-11-18 15:49:28 [INFO] Results saved to cpd_test/V_tip_+0.17V
+2025-11-18 15:49:28 [INFO] ============================================================
+2025-11-18 15:49:28 [INFO] Solving for V_tip = 0.180 V (18/19)
+2025-11-18 15:49:28 [INFO] ============================================================
+2025-11-18 15:49:28 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:28 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:29 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:29 [INFO] Saved results to cpd_test/V_tip_+0.18V
+2025-11-18 15:49:29 [INFO] Results saved to cpd_test/V_tip_+0.18V
+2025-11-18 15:49:29 [INFO] ============================================================
+2025-11-18 15:49:29 [INFO] Solving for V_tip = 0.190 V (19/19)
+2025-11-18 15:49:29 [INFO] ============================================================
+2025-11-18 15:49:29 [INFO] Using previous solution as warm start...
+2025-11-18 15:49:29 [INFO] --- Attempting direct Newton solve (homotopy = 1.0) ---
+2025-11-18 15:49:30 [INFO]   [Direct Newton] Converged in 12 iterations.
+2025-11-18 15:49:30 [INFO] Saved results to cpd_test/V_tip_+0.19V
+2025-11-18 15:49:30 [INFO] Results saved to cpd_test/V_tip_+0.19V
+2025-11-18 15:49:30 [INFO] Finished simulation at 2025-11-18 15:49:30.274571, duration: 0:00:18.618858

@@ -4,79 +4,63 @@ import os
 import re
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")  # Use non-GUI backend for faster plotting
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main_fast import GeometricParameters, PhysicalParameters, load_results
+from main_fast import GeometricParameters, PhysicalParameters, create_mesh
+import ngsolve as ng
 
 
-def find_vtip_subdirs(out_dir: str) -> list[tuple[str, float]]:
-    """Find V_tip_±X.XXV subdirectories and extract voltage values
+def load_solution_vector(out_dir: str, fes) -> ng.GridFunction:
+    """
+    Load solution vector from saved files without regenerating mesh.
+
+    Args:
+        out_dir: Directory containing saved results
+        fes: Finite element space (must match the saved solution)
 
     Returns:
-        List of (subdir_path, V_tip_value) tuples, sorted by absolute V_tip value
+        GridFunction containing the loaded solution
     """
-    pattern = re.compile(r"^V_tip_([+-]?\d+\.\d{2})V$")
-    vtip_dirs = []
+    meta_path = os.path.join(out_dir, "metadata.json")
+    if not os.path.isfile(meta_path):
+        raise FileNotFoundError(f"No metadata.json found in {out_dir}")
 
-    for item in os.listdir(out_dir):
-        item_path = os.path.join(out_dir, item)
-        if os.path.isdir(item_path):
-            match = pattern.match(item)
-            if match:
-                V_tip = float(match.group(1))
-                vtip_dirs.append((item_path, V_tip))
+    with open(meta_path) as f:
+        meta = json.load(f)
 
-    # Sort by absolute value
-    vtip_dirs.sort(key=lambda x: abs(x[1]))
+    if meta["ndof"] != fes.ndof:
+        raise RuntimeError(f"DOF mismatch: saved={meta['ndof']} current={fes.ndof}")
 
-    return vtip_dirs
+    u_dim_path = os.path.join(out_dir, "u_dimless.npy")
+    if not os.path.isfile(u_dim_path):
+        raise FileNotFoundError(f"No u_dimless.npy found in {out_dir}")
+
+    u_vec = np.load(u_dim_path)
+    if u_vec.size != fes.ndof:
+        raise RuntimeError("Vector length does not match current FES")
+
+    u = ng.GridFunction(fes, name="potential_dimless")
+    u.vec.FV().NumPy()[:] = u_vec
+
+    return u
 
 
-def process_single_vtip(
-    subdir: str,
-    V_tip: float,
-    geom_params: GeometricParameters,
-    phys_params: PhysicalParameters,
-    V_c: float,
-    assume_full_ionization: bool,
-    plot_donor_ionization: bool,
-    plot_charge_density: bool,
-    plot_mesh: bool,
-):
-    """Process a single V_tip directory and generate plots"""
-    print(f"\n{'=' * 60}")
-    print(f"Processing V_tip = {V_tip:.3f} V")
-    print(f"{'=' * 60}")
+def precompute_mesh_geometry(msh, L_c: float):
+    """Precompute mesh geometry information for reuse across all V_tip.
 
-    # Load results from this subdirectory
-    msh, u_dimless, _ = load_results(subdir, geom_params, V_c)
-    L_c = geom_params.L_c  # [m]
-    parser = argparse.ArgumentParser(description="Post-process NGSpy results")
-    parser.add_argument("out_dir", type=str, help="Output directory")
-    parser.add_argument(
-        "--plot_donor_ionization",
-        action="store_true",
-        help="Plot donor ionization profile",
-    )
-    parser.add_argument(
-        "--plot_charge_density",
-        action="store_true",
-        help="Plot charge density profile",
-    )
-    parser.add_argument(
-        "--plot_mesh", action="store_true", help="Plot mesh (for publication)"
-    )
-    args, _ = parser.parse_known_args()
-    out_dir = args.out_dir
-    plot_donor_ionization = args.plot_donor_ionization
-    plot_charge_density = args.plot_charge_density
-    plot_mesh = args.plot_mesh
-    # --- 2D Potential Plot ---
-    print("Creating 2D potential plot...")
+    Args:
+        msh: NGSolve mesh
+        L_c: Characteristic length [m]
 
+    Returns:
+        Dictionary containing precomputed geometry data
+    """
     # Get mesh vertex coordinates
     verts = np.array([v.point for v in msh.vertices])
     x, y = verts[:, 0], verts[:, 1]
@@ -89,12 +73,137 @@ def process_single_vtip(
         tris.append([v.nr for v in el.vertices])
     triangulation = Triangulation(x, y, np.array(tris))
 
-    # Evaluate potential at vertices (in volts)
-    potential_at_verts = np.array([u_dimless(msh(*v)) for v in verts]) * V_c
-
     # Plotting range
     r_max = np.max(r_coords)
     z_min, z_max = np.min(z_coords), np.max(z_coords)
+
+    return {
+        "verts": verts,
+        "x": x,
+        "y": y,
+        "r_coords": r_coords,
+        "z_coords": z_coords,
+        "triangulation": triangulation,
+        "r_max": r_max,
+        "z_min": z_min,
+        "z_max": z_max,
+    }
+
+
+def evaluate_potential_at_line(u_dimless, msh, coords, axis, V_c):
+    """Evaluate potential along a line with vectorized error handling.
+
+    Args:
+        u_dimless: GridFunction with dimensionless potential
+        msh: NGSolve mesh
+        coords: Array of coordinates to evaluate
+        axis: 'vertical' (r=0, vary z) or 'horizontal' (z=const, vary r)
+        V_c: Characteristic voltage
+
+    Returns:
+        valid_coords, potential_values (both as numpy arrays)
+    """
+    potential = []
+    valid = []
+
+    for coord in coords:
+        try:
+            if axis == "vertical":
+                val = u_dimless(msh(0, coord)) * V_c
+            else:  # horizontal
+                val = u_dimless(msh(coord[0], coord[1])) * V_c
+            potential.append(val)
+            valid.append(coord if axis == "vertical" else coord[0])
+        except Exception:
+            continue
+
+    return np.array(valid), np.array(potential)
+
+
+def find_vtip_subdirs(out_dir: str, V_tip_range: str = None) -> list[tuple[str, float]]:
+    """Find V_tip_±X.XXV subdirectories and extract voltage values
+
+    Returns:
+        List of (subdir_path, V_tip_value) tuples, sorted by absolute V_tip value
+    """
+    pattern = re.compile(r"^V_tip_([+-]?\d+\.\d{2})V$")
+    vtip_dirs = []
+
+    V_tip_min, V_tip_max = -np.inf, np.inf
+    if V_tip_range:
+        V_tip_min_str, V_tip_max_str = V_tip_range.split(":")
+        V_tip_min = float(V_tip_min_str)
+        V_tip_max = float(V_tip_max_str)
+
+    for item in os.listdir(out_dir):
+        item_path = os.path.join(out_dir, item)
+        if os.path.isdir(item_path):
+            match = pattern.match(item)
+            if match:
+                V_tip = float(match.group(1))
+                if V_tip_min <= V_tip <= V_tip_max:
+                    vtip_dirs.append((item_path, V_tip))
+
+    # Sort by absolute value
+    vtip_dirs.sort(key=lambda x: abs(x[1]))
+
+    return vtip_dirs
+
+
+def process_single_vtip(
+    subdir: str,
+    V_tip: float,
+    msh,
+    fes,
+    mesh_geometry: dict,
+    geom_params: GeometricParameters,
+    phys_params: PhysicalParameters,
+    V_c: float,
+    assume_full_ionization: bool,
+    plot_donor_ionization: bool,
+    plot_charge_density: bool,
+    plot_mesh: bool,
+    calc_energy: bool,
+):
+    """Process a single V_tip directory and generate plots
+
+    Args:
+        subdir: Subdirectory containing V_tip results
+        V_tip: Tip voltage value
+        msh: Pre-generated mesh (shared across all V_tip)
+        fes: Finite element space (shared across all V_tip)
+        mesh_geometry: Precomputed mesh geometry data (shared across all V_tip)
+        geom_params: Geometric parameters
+        phys_params: Physical parameters
+        V_c: Characteristic voltage
+        assume_full_ionization: Whether to assume full ionization
+        plot_donor_ionization: Whether to plot donor ionization
+        plot_charge_density: Whether to plot charge density
+        plot_mesh: Whether to plot mesh
+        calc_energy: Whether to calculate electrostatic energy
+
+    Returns:
+        float: Electrostatic energy [J] if calc_energy is True, else None
+    """
+    print(f"\n{'=' * 60}")
+    print(f"Processing V_tip = {V_tip:.3f} V")
+    print(f"{'=' * 60}")
+
+    # Load solution vector from this subdirectory (no mesh regeneration)
+    u_dimless = load_solution_vector(subdir, fes)
+
+    # Extract precomputed geometry
+    verts = mesh_geometry["verts"]
+    triangulation = mesh_geometry["triangulation"]
+    r_max = mesh_geometry["r_max"]
+    z_min = mesh_geometry["z_min"]
+    z_max = mesh_geometry["z_max"]
+
+    # --- 2D Potential Plot ---
+    print("Creating 2D potential plot...")
+
+    # Evaluate potential at vertices (in volts) - optimized
+    potential_at_verts = np.array([u_dimless(msh(*v)) for v in verts]) * V_c
 
     # Plotting
     fig1, ax1 = plt.subplots(figsize=(8, 6))
@@ -202,37 +311,27 @@ def process_single_vtip(
     # Vertical Profile (along center axis r=0)
     num_points = 200
     # Get geometry range
-    z_min = -geom_params.l_sio2 - (geom_params.l_vac - geom_params.l_sio2)
-    z_max = geom_params.l_vac
-    z_coords = np.linspace(z_min, z_max, num_points)
+    z_min_range = -geom_params.l_sio2 - (geom_params.l_vac - geom_params.l_sio2)
+    z_max_range = geom_params.l_vac
+    z_coords_eval = np.linspace(z_min_range, z_max_range, num_points)
 
-    potential_z = []
-    valid_z = []
-    for z in z_coords:
-        try:
-            # Evaluate potential at (r=0, z)
-            val = u_dimless(msh(0, z)) * V_c
-            potential_z.append(val)
-            valid_z.append(z)
-        except Exception:
-            # Ignore points outside the mesh
-            continue
+    # Use optimized evaluation function
+    valid_z, potential_z = evaluate_potential_at_line(
+        u_dimless, msh, z_coords_eval, "vertical", V_c
+    )
 
     # Horizontal Profile (e.g., SiO2/SiC interface z = -l_sio2)
-    r_max = geom_params.region_radius
-    r_coords = np.linspace(0, r_max, num_points)
+    r_max_range = geom_params.region_radius
+    r_coords_eval = np.linspace(0, r_max_range, num_points)
     z_level = -geom_params.l_sio2
 
-    potential_r = []
-    valid_r = []
-    for r in r_coords:
-        try:
-            # Evaluate potential at (r, z_level)
-            val = u_dimless(msh(r, z_level)) * V_c
-            potential_r.append(val)
-            valid_r.append(r)
-        except Exception:
-            continue
+    # Create coordinate pairs for horizontal line
+    horiz_coords = np.column_stack(
+        (r_coords_eval, np.full_like(r_coords_eval, z_level))
+    )
+    valid_r, potential_r = evaluate_potential_at_line(
+        u_dimless, msh, horiz_coords, "horizontal", V_c
+    )
 
     # Plotting (combine both profiles into one figure)
     fig2, (ax2_z, ax2_r) = plt.subplots(2, 1, figsize=(8, 10))
@@ -728,6 +827,36 @@ def process_single_vtip(
         )
         print("Saved charge density data to text files.")
 
+    # --- Calculate Electrostatic Energy ---
+    if calc_energy:
+        print("Calculating electrostatic energy...")
+
+        # Define relative permittivity (must match main_fast.py)
+        epsilon_r = ng.CoefficientFunction(
+            [phys_params.eps_sic, phys_params.eps_sio2, phys_params.eps_vac]
+        )
+
+        # Calculate energy density: w = (1/2) * epsilon_0 * epsilon_r * |grad(u)|^2 * V_c^2
+        # In axisymmetric coordinates, integrate with factor 2*pi*r
+        r = ng.x
+        grad_u = ng.grad(u_dimless)
+        energy_density_dimless = (
+            0.5 * epsilon_r * grad_u * grad_u
+        )  # dimensionless energy density
+
+        # Convert to dimensional energy density [J/m^3]
+        epsilon_0 = 8.854187817e-12  # [F/m]
+        L_c = geom_params.L_c  # [m]
+        energy_density = epsilon_0 * energy_density_dimless * V_c**2 / L_c**2  # [J/m^3]
+
+        # Integrate over volume (axisymmetric: 2*pi*r * dA)
+        energy = ng.Integrate(energy_density * 2 * np.pi * r * ng.dx, msh)  # [J]
+
+        print(f"Electrostatic energy: {energy:.6e} J")
+        return energy
+
+    return None
+
 
 def create_comparison_plots(vtip_dirs: list[tuple[str, float]], out_dir: str):
     """Create comparison plots overlaying all V_tip line profiles"""
@@ -818,6 +947,14 @@ def main():
         action="store_true",
         help="Skip comparison plots",
     )
+    parser.add_argument(
+        "--calc_energy",
+        action="store_true",
+        help="Calculate spacial integration of static energy",
+    )
+    parser.add_argument(
+        "--V_tip_range", type=str, default=None, help="V_tip range to process (min:max)"
+    )
     args, _ = parser.parse_known_args()
     out_dir = args.out_dir
 
@@ -840,7 +977,7 @@ def main():
     phys_params = PhysicalParameters(**phys_params_input)
 
     # Get V_c from any metadata.json (should be the same for all)
-    vtip_dirs = find_vtip_subdirs(out_dir)
+    vtip_dirs = find_vtip_subdirs(out_dir, V_tip_range=args.V_tip_range)
 
     if not vtip_dirs:
         raise FileNotFoundError(f"No V_tip_±X.XXV subdirectories found in {out_dir}")
@@ -855,11 +992,26 @@ def main():
         metadata = json.load(f)
     V_c = metadata["V_c"]
 
+    # Create mesh once (shared by all V_tip)
+    print("\nCreating mesh (once for all V_tip)...")
+    msh = create_mesh(geom_params)
+    fes = ng.H1(msh, order=1)
+    print(f"Mesh created: {fes.ndof} DOFs")
+
+    # Precompute mesh geometry (once for all V_tip)
+    print("Precomputing mesh geometry...")
+    mesh_geometry = precompute_mesh_geometry(msh, geom_params.L_c)
+    print(f"Mesh geometry precomputed: {len(mesh_geometry['verts'])} vertices")
+
     # Process each V_tip directory
+    energy_data = []  # List to store (V_tip, energy) tuples
     for subdir, V_tip in vtip_dirs:
-        process_single_vtip(
+        energy = process_single_vtip(
             subdir=subdir,
             V_tip=V_tip,
+            msh=msh,
+            fes=fes,
+            mesh_geometry=mesh_geometry,
             geom_params=geom_params,
             phys_params=phys_params,
             V_c=V_c,
@@ -867,11 +1019,27 @@ def main():
             plot_donor_ionization=args.plot_donor_ionization,
             plot_charge_density=args.plot_charge_density,
             plot_mesh=args.plot_mesh,
+            calc_energy=args.calc_energy,
         )
+        if args.calc_energy and energy is not None:
+            energy_data.append((V_tip, energy))
 
     # Create comparison plots
     if not args.no_comparison:
         create_comparison_plots(vtip_dirs, out_dir)
+
+    # Save electrostatic energy data
+    if args.calc_energy and energy_data:
+        energy_file = os.path.join(out_dir, "electrostatic_energy.txt")
+        energy_array = np.array(energy_data)
+        np.savetxt(
+            energy_file,
+            energy_array,
+            header="V_tip energy",
+            fmt=["%+.2f", "%.6e"],
+            comments="#",
+        )
+        print(f"\nSaved electrostatic energy data to {energy_file}")
 
     print("\n" + "=" * 60)
     print("Post-processing completed!")
