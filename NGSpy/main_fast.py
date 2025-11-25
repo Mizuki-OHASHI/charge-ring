@@ -508,10 +508,10 @@ def _setup_weak_form(
     if phys.point_charge_enabled:
         z_pos = phys.point_charge_z * 1e-9 / L_c
         r_pos = 0  # phys.point_charge_r * 1e-9 / L_c
-        q_val = (phys.point_charge_value * const.e * L_c**2) / (const.epsilon_0 * V_c)
+        q_val = (phys.point_charge_value * const.e) / (const.epsilon_0 * V_c * L_c)
 
         # sigmaの設定
-        sigma = 0.5e-9 / L_c
+        sigma = 5e-9 / L_c
 
         # 1. 生のガウス関数 (Unnormalized)
         dist_sq = (r - r_pos) ** 2 + (ng.y - z_pos) ** 2
@@ -531,7 +531,7 @@ def _setup_weak_form(
         rho_point = norm_factor * raw_gaussian
 
         # 4. BilinearForm に追加 (移項してマイナス)
-        a += -rho_point * vh * r * ng.dx
+        a += -homotopy_charge * rho_point * vh * r * ng.dx
 
     return a
 
@@ -947,8 +947,8 @@ def main():
     parser.add_argument(
         "--point_charge_z",
         type=float,
-        default=-10.0,
-        help="Point charge z position in nm (default: -10.0). Note: z=0 is SiO2/vacuum interface, z < -l_sio2 is SiC region.",
+        default=-5.0,
+        help="Point charge z position in nm (default: -5.0).",
     )
     parser.add_argument(
         "--point_charge_r",
