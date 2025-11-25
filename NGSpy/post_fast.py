@@ -955,7 +955,9 @@ def main():
     parser.add_argument(
         "--V_tip_range", type=str, default=None, help="V_tip range to process (min:max)"
     )
-    args, _ = parser.parse_known_args()
+    args, unknown = parser.parse_known_args()
+    if unknown:
+        raise ValueError(f"Unknown arguments: {unknown}")
     out_dir = args.out_dir
 
     print(f"Post-processing results in {out_dir}...")

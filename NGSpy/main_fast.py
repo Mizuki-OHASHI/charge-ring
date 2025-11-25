@@ -14,7 +14,10 @@ from netgen.geom2d import SplineGeometry
 from ngsolve.solvers import Newton
 from scipy.optimize import brentq
 
-from fermi_dirac_integral import F_half_aymerich_humet_ng as fermi_dirac_half, F_half_aymerich_humet_np as fermi_dirac_integral
+from fermi_dirac_integral import (
+    F_half_aymerich_humet_ng as fermi_dirac_half,
+    F_half_aymerich_humet_np as fermi_dirac_integral,
+)
 
 # NOTE:
 # 1. Feenstra, R. M. Electrostatic potential for a hyperbolic probe tip near a semiconductor. J. Vac. Sci. Technol. B 21, 2080–2088 (2003).
@@ -36,6 +39,10 @@ class PhysicalParameters:
     Nd: float = 1e22  # Donor concentration [m^-3]
     Na: float = 0.0  # Acceptor concentration [m^-3]
     sigma_s: float = 1e15  # Surface charge density at SiC/SiO2 interface [m^-2]
+    point_charge_enabled: bool = False  # Enable point charge
+    point_charge_value: float = -1.0  # Point charge value in units of elementary charge (default: -1 for single electron)
+    point_charge_z: float = -10.0  # Point charge z position [nm] (note: z=0 is SiO2/vacuum interface, z=-l_sio2 is SiC/SiO2 interface)
+    point_charge_r: float = 0.0  # Point charge r position [nm]
     m_de: float = 0.42 * const.m_e
     m_dh: float = 1.0 * const.m_e
     Eg: float = 3.26  # Bandgap [eV]
@@ -97,49 +104,6 @@ class GeometricParameters:
         assert 0.01 <= self.mesh_scale <= 10.0, (
             "mesh_scale should be between 0.01 and 10.0"
         )
-
-
-# def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
-#     """Fermi-Dirac integral of half-integer order (j=1/2) approximation"""
-#     return np.piecewise(
-#         x,
-#         [x > 25],
-#         [
-#             lambda x: (2 / np.sqrt(np.pi))
-#             * ((2 / 3) * x**1.5 + (np.pi**2 / 12) * x**-0.5),
-#             lambda x: np.exp(x) / (1 + 0.27 * np.exp(x)),
-#         ],
-#     )
-
-
-# def fermi_dirac_integral(x: np.ndarray) -> np.ndarray:
-#     """
-#     Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
-#     by Aymerich-Humet et al. (1981).
-
-#     This approximation is continuous and accurate across all regimes,
-#     transitioning smoothly from the Boltzmann limit (exp(x) for x << 0)
-#     to the degenerate limit (Sommerfeld expansion, first-order term).
-#     """
-
-#     # Aymerich-Humet et al. (1981) approximation parameters
-#     a1 = 6.316
-#     a2 = 12.92
-
-#     # Pre-factor for the degenerate limit (4 / (3 * sqrt(pi)))
-#     C_deg = 0.75224956896
-
-#     result = np.piecewise(
-#         x,
-#         [x < -10.0],  # Non-degenerate regime
-#         [
-#             lambda x: np.exp(x),
-#             lambda x: 1.0
-#             / (np.exp(-x) + (C_deg * (x**2 + a1 * x + a2) ** 0.75) ** (-1.0)),
-#         ],
-#     )
-
-#     return result
 
 
 def find_fermi_level(
@@ -460,7 +424,10 @@ def _setup_weak_form(
     Feenstra,
     assume_full_ionization,
 ):
-    """Define the weak form of the Poisson equation with nonlinear charge density"""
+    """Define the weak form of the Poisson equation with nonlinear charge density
+
+    If point charge is enabled, adds a delta function contribution at the specified location.
+    """
 
     uh, vh = fes.TnT()
     r = ng.x
@@ -505,52 +472,6 @@ def _setup_weak_form(
         x_clip = clamp(x, clip_exp)
         return ng.exp(x_clip)
 
-    # def fermi_dirac_half(x):
-    #     x_clip = clamp(x, clip_exp)
-    #     high = (2 / np.sqrt(np.pi)) * (
-    #         (2 / 3) * x_clip**1.5 + (np.pi**2 / 12) * x_clip ** (-0.5)
-    #     )
-    #     low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
-    #     return ng.IfPos(x_clip - 25.0, high, low)
-
-    # def fermi_dirac_half(x):
-    #     """
-    #     Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
-    #     by Aymerich-Humet et al. (1981), implemented for NGSolve.
-    #     """
-
-    #     # Aymerich-Humet 近似 (F_1/2) のための定数
-    #     a1 = 6.316
-    #     a2 = 12.92
-    #     C_deg = 0.75224956896  # 4 / (3 * np.sqrt(np.pi))
-
-    #     # 1. 非縮退領域 (x < -10.0) の近似: F_1/2(x) \approx exp(x)
-    #     #    safe_exp は x を clamp(x, clip_exp) してから ng.exp() する
-    #     boltzmann_approx = safe_exp(x)
-
-    #     # 2. 全領域の近似: F_1/2(x) \approx [exp(-x) + G(x)^-1]^-1
-
-    #     # 2a. exp(-x) の項
-    #     #     safe_exp(-x) は -x を clamp する (x を [-clip_exp, clip_exp] にクランプ)
-    #     exp_neg_x = safe_exp(-x)
-
-    #     # 2b. G(x)^-1 の項
-    #     #     多項式 (x^2 + a1*x + a2) は x >= -4.0 で定義されているため
-    #     #     x_safe = max(x, -4.0) を ng.IfPos で実装
-    #     x_safe = ng.IfPos(x - (-4.0), x, -4.0)
-
-    #     G_inv_denominator = C_deg * (x_safe**2 + a1 * x_safe + a2) ** 0.75
-
-    #     # G(x)^-1 を計算 (多項式は x >= -4 で常に正なのでゼロ除算の心配はない)
-    #     G_inv = G_inv_denominator ** (-1.0)
-
-    #     # 2c. 全領域の近似式を結合
-    #     full_approx = (exp_neg_x + G_inv) ** (-1.0)
-
-    #     # 3. x = -10.0 を境に、非縮退近似と全領域近似を切り替える
-    #     #    これにより、x が非常に小さい負の値のときの数値的安定性を確保する
-    #     return ng.IfPos(x - (-10.0), full_approx, boltzmann_approx)
-
     u_clip = clamp(uh, clip_potential)
 
     # Nonlinear charge density terms (at SiC region)
@@ -573,6 +494,7 @@ def _setup_weak_form(
         n_term = C0 * phys.n0 * safe_exp(u_clip)
         p_term = C0 * phys.p0 * safe_exp(-u_clip)
         Ndp_term = C0 * phys.Nd  # Fully ionized
+
     rho_dimless = homotopy_charge * (p_term + Ndp_term - n_term)
 
     sigma_s_dimless = homotopy_sigma * sigma_s_target
@@ -582,6 +504,34 @@ def _setup_weak_form(
     a += epsilon_r * lambda_ff * uh * vh * r * ng.ds("far-field")
     a += -rho_dimless * vh * r * ng.dx(definedon=msh.Materials("sic"))
     a += -sigma_s_dimless * vh * r * ng.ds("sic/sio2")
+
+    if phys.point_charge_enabled:
+        z_pos = phys.point_charge_z * 1e-9 / L_c
+        r_pos = 0  # phys.point_charge_r * 1e-9 / L_c
+        q_val = (phys.point_charge_value * const.e * L_c**2) / (const.epsilon_0 * V_c)
+
+        # sigmaの設定
+        sigma = 0.5e-9 / L_c
+
+        # 1. 生のガウス関数 (Unnormalized)
+        dist_sq = (r - r_pos) ** 2 + (ng.y - z_pos) ** 2
+        raw_gaussian = ng.exp(-dist_sq / (2 * sigma**2))
+
+        # 実際のメッシュ上で積分して補正係数を決めるq_val になる
+        # 軸対称なので 2*pi*r を掛けて積分
+        volume_integral = ng.Integrate(raw_gaussian * 2 * ng.pi * r, msh)
+
+        # ゼロ除算回避
+        if volume_integral == 0:
+            # 万が一積分できない（メッシュ外など）場合はエラー
+            raise ValueError("Gaussian integral is zero. Check charge position.")
+
+        # 3. 正規化
+        norm_factor = q_val / volume_integral
+        rho_point = norm_factor * raw_gaussian
+
+        # 4. BilinearForm に追加 (移項してマイナス)
+        a += -rho_point * vh * r * ng.dx
 
     return a
 
@@ -726,7 +676,7 @@ def solve_with_direct_newton(
                 )
                 if step < 0.5:
                     step *= 1.5
-            except Exception as exc2:
+            except Exception:
                 u.vec.data = backup.vec
                 step *= 0.5
                 logger.warning(
@@ -989,7 +939,32 @@ def main():
         default=1e-11,
         help="Maximum error tolerance for Newton solver.",
     )
-    args, _ = parser.parse_known_args()
+    parser.add_argument(
+        "--point_charge",
+        action="store_true",
+        help="Enable point charge at specified position.",
+    )
+    parser.add_argument(
+        "--point_charge_z",
+        type=float,
+        default=-10.0,
+        help="Point charge z position in nm (default: -10.0). Note: z=0 is SiO2/vacuum interface, z < -l_sio2 is SiC region.",
+    )
+    parser.add_argument(
+        "--point_charge_r",
+        type=float,
+        default=0.0,
+        help="Point charge r position in nm (default: 0.0).",
+    )
+    parser.add_argument(
+        "--point_charge_value",
+        type=float,
+        default=-1.0,
+        help="Point charge value in units of elementary charge (default: -1 for single electron).",
+    )
+    args, unkown = parser.parse_known_args()
+    if unkown:
+        raise ValueError(f"Unknown arguments: {unkown}")
 
     # Create output directory
     os.makedirs(args.out_dir, exist_ok=True)
@@ -1026,6 +1001,10 @@ def main():
         T=args.T,
         Nd=args.Nd * 1e6,  # cm^-3 -> m^-3
         sigma_s=args.sigma_s * 1e4,  # cm^-2 -> m^-2
+        point_charge_enabled=args.point_charge,
+        point_charge_value=args.point_charge_value,
+        point_charge_z=args.point_charge_z,
+        point_charge_r=args.point_charge_r,
     )
 
     # Calculate Fermi level

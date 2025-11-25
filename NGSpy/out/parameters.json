@@ -4,6 +4,10 @@
     "Nd": 1e+22,
     "Na": 0.0,
     "sigma_s": 1e+16,
+    "point_charge_enabled": true,
+    "point_charge_value": -1.0,
+    "point_charge_z": -5.0,
+    "point_charge_r": 0.0,
     "m_de": 3.825941159838e-31,
     "m_dh": 9.1093837139e-31,
     "Eg": 3.26,
@@ -26,7 +30,7 @@
     "Nd_h": 3.472222222222222e+21,
     "Nd_c": 6.527777777777777e+21,
     "kTeV": 0.025851999786435535,
-    "Ef": 3.0884157359746793
+    "Ef": 3.0912687270100783
   },
   "geometric": {
     "L_c": 1e-09,
@@ -35,7 +39,8 @@
     "tip_height": 8.0,
     "l_vac": 200.0,
     "region_radius": 500.0,
-    "n_tip_arc_points": 7
+    "n_tip_arc_points": 7,
+    "mesh_scale": 1.0
   },
   "simulation": {
     "V_tips": [
@@ -55,6 +60,12 @@
     "out_dir": "out",
     "plot_fermi": false,
     "model": "Feenstra",
-    "assume_full_ionization": false
+    "assume_full_ionization": false,
+    "mesh_scale": 1.0,
+    "maxerr": 1e-11,
+    "point_charge": true,
+    "point_charge_z": -5.0,
+    "point_charge_r": 0.0,
+    "point_charge_value": -1.0
   }
 }
