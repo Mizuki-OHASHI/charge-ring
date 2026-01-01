@@ -3,6 +3,7 @@ import json
 import os
 
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
@@ -122,7 +123,7 @@ def main():
         rc_params_stashed = plt.rcParams.copy()
         plt.rcParams.update(rc_params)
         fig, axes = plt.subplots(1, 2, figsize=(figwidth_in, figwidth_in * 0.4))
-        axes[0].triplot(triangulation, "k-", lw=0.5)
+        axes[0].triplot(triangulation, "k-", lw=0.1)
         axes[0].axhline(y=0, color="white", linestyle="--", linewidth=0.5)
         axes[0].axhline(
             y=-geom_params.l_sio2, color="white", linestyle="--", linewidth=0.5
@@ -134,34 +135,64 @@ def main():
             )
         )
         axes[0].set_title("Full Mesh")
-        axes[0].set_xlabel("r / nm")
-        axes[0].set_ylabel("z / nm")
+        axes[0].set_xlabel("$r$ / nm")
+        axes[0].set_ylabel("$z$ / nm")
         axes[0].set_aspect("equal")
         axes[0].set_xlim(0, r_max)
         axes[0].set_ylim(z_min, z_max)
         # zoomed mesh
-        axes[1].triplot(triangulation, "k-", lw=0.5)
+        axes[1].triplot(triangulation, "k-", lw=0.1)
         axes[1].axhline(y=0, color="blue", linestyle="--", linewidth=1.5)
         axes[1].axhline(
             y=-geom_params.l_sio2, color="blue", linestyle="--", linewidth=1.5
         )
         axes[1].set_title("Zoomed Mesh (red box)")
-        axes[1].set_xlabel("r / nm")
-        axes[1].set_ylabel("z / nm")
+        axes[1].set_xlabel("$r$ / nm")
+        axes[1].set_ylabel("$z$ / nm")
         axes[1].set_aspect("equal")
         for spine in axes[1].spines.values():
             spine.set_edgecolor("red")
+        patches_vac = patches.Rectangle(
+            (30-7.5, 5-2),
+            15,
+            4,
+            linewidth=0,
+            edgecolor=None,
+            facecolor="white",
+            alpha=0.7, zorder=2
+        )
+        axes[1].add_patch(patches_vac)
+        patches_sio2 = patches.Rectangle(
+            (30-4, -2.5-2),
+            8,
+            4,
+            linewidth=0,
+            edgecolor=None,
+            facecolor="white",
+            alpha=0.7, zorder=2
+        )
+        axes[1].add_patch(patches_sio2)
+        patches_sic = patches.Rectangle(
+            (30-3, -12.5-2),
+            6,
+            4,
+            linewidth=0,
+            edgecolor=None,
+            facecolor="white",
+            alpha=0.7, zorder=2
+        )
+        axes[1].add_patch(patches_sic)
         axes[1].text(
             10, 15, "tip", color="black", fontsize=10, ha="center", va="center"
         )
         axes[1].text(
-            30, 5, "vacuum", color="black", fontsize=10, ha="center", va="center"
+            30, 5, "vacuum", color="black", fontsize=10, ha="center", va="center", zorder=3
         )
         axes[1].text(
-            30, -2.5, "SiO$_2$", color="black", fontsize=10, ha="center", va="center"
+            30, -2.5, "SiO$_2$", color="black", fontsize=10, ha="center", va="center", zorder=3
         )
         axes[1].text(
-            30, -12.5, "SiC", color="black", fontsize=10, ha="center", va="center"
+            30, -12.5, "SiC", color="black", fontsize=10, ha="center", va="center", zorder=3
         )
         axes[1].set_xlim(0, 50)
         axes[1].set_ylim(-20, 20)

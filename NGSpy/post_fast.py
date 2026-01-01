@@ -836,21 +836,25 @@ def process_single_vtip(
             [phys_params.eps_sic, phys_params.eps_sio2, phys_params.eps_vac]
         )
 
-        # Calculate energy density: w = (1/2) * epsilon_0 * epsilon_r * |grad(u)|^2 * V_c^2
-        # In axisymmetric coordinates, integrate with factor 2*pi*r
-        r = ng.x
+        # Calculate dimensionless energy density: 0.5 * epsilon_r * |grad(u_dimless)|^2
+        # u_phys = u_dimless * V_c, so E_phys = grad(u_phys) = (V_c / L_c) * grad(u_dimless)
+        # => w_phys = 0.5 * epsilon_0 * epsilon_r * |E_phys|^2
+        r = ng.x  # dimensionless radius (r_phys / L_c)
         grad_u = ng.grad(u_dimless)
-        energy_density_dimless = (
-            0.5 * epsilon_r * grad_u * grad_u
-        )  # dimensionless energy density
+        energy_density_dimless = 0.5 * epsilon_r * grad_u * grad_u
 
         # Convert to dimensional energy density [J/m^3]
         epsilon_0 = 8.854187817e-12  # [F/m]
         L_c = geom_params.L_c  # [m]
         energy_density = epsilon_0 * energy_density_dimless * V_c**2 / L_c**2  # [J/m^3]
 
-        # Integrate over volume (axisymmetric: 2*pi*r * dA)
-        energy = ng.Integrate(energy_density * 2 * np.pi * r * ng.dx, msh)  # [J]
+        # Integrate over physical volume (axisymmetric: 2*pi*r_phys * dA_phys)
+        # r_phys = L_c * r, dA_phys = L_c^2 * dA_dimless  => 2*pi*L_c^3*r*dx
+        volume_factor = L_c**3  # [m^3]
+        energy = ng.Integrate(
+            energy_density * volume_factor * 2 * np.pi * r * ng.dx,
+            msh,
+        )  # [J]
 
         print(f"Electrostatic energy: {energy:.6e} J")
         return energy
