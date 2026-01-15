@@ -8,11 +8,17 @@ import matplotlib
 
 matplotlib.use("Agg")  # Use non-GUI backend for faster plotting
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import numpy as np
 from matplotlib.tri import Triangulation
 from ngsolve import VOL
 
-from main_fast import GeometricParameters, PhysicalParameters, create_mesh
+from main_fast import (
+    GeometricParameters,
+    PhysicalParameters,
+    create_mesh,
+    evaluate_potential_at_line,
+)
 import ngsolve as ng
 
 
@@ -90,37 +96,9 @@ def precompute_mesh_geometry(msh, L_c: float):
     }
 
 
-def evaluate_potential_at_line(u_dimless, msh, coords, axis, V_c):
-    """Evaluate potential along a line with vectorized error handling.
-
-    Args:
-        u_dimless: GridFunction with dimensionless potential
-        msh: NGSolve mesh
-        coords: Array of coordinates to evaluate
-        axis: 'vertical' (r=0, vary z) or 'horizontal' (z=const, vary r)
-        V_c: Characteristic voltage
-
-    Returns:
-        valid_coords, potential_values (both as numpy arrays)
-    """
-    potential = []
-    valid = []
-
-    for coord in coords:
-        try:
-            if axis == "vertical":
-                val = u_dimless(msh(0, coord)) * V_c
-            else:  # horizontal
-                val = u_dimless(msh(coord[0], coord[1])) * V_c
-            potential.append(val)
-            valid.append(coord if axis == "vertical" else coord[0])
-        except Exception:
-            continue
-
-    return np.array(valid), np.array(potential)
-
-
-def find_vtip_subdirs(out_dir: str, V_tip_range: str = None) -> list[tuple[str, float]]:
+def find_vtip_subdirs(
+    out_dir: str, V_tip_range: str | None = None
+) -> list[tuple[str, float]]:
     """Find V_tip_±X.XXV subdirectories and extract voltage values
 
     Returns:
@@ -263,7 +241,7 @@ def process_single_vtip(
         )
         # zoom region in full mesh
         axes[0].add_patch(
-            plt.Rectangle(
+            patches.Rectangle(
                 (0, -20), 50, 40, linewidth=1, edgecolor="red", facecolor="none"
             )
         )
@@ -949,6 +927,7 @@ def main():
     parser.add_argument(
         "--no_comparison",
         action="store_true",
+        default=True,
         help="Skip comparison plots",
     )
     parser.add_argument(

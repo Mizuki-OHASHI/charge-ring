@@ -17,8 +17,8 @@ from scipy.optimize import brentq
 from fermi_dirac_integral import F_half_aymerich_humet_np, F_half_aymerich_humet_ng
 
 # NOTE:
-# 1. Feenstra, R. M. Electrostatic potential for a hyperbolic probe tip near a semiconductor. J. Vac. Sci. Technol. B 21, 2080–2088 (2003).
-# 2. Ikeda, M., Matsunami, H. & Tanaka, T. Site effect on the impurity levels in 4 H , 6 H , and 1 5 R SiC. Phys. Rev. B 22, 2842–2854 (1980).
+# 1. Feenstra, R. M. Electrostatic potential for a hyperbolic probe tip near a semiconductor. J. Vac. Sci. Technol. B 21, 2080-2088 (2003).
+# 2. Ikeda, M., Matsunami, H. & Tanaka, T. Site effect on the impurity levels in 4 H , 6 H , and 1 5 R SiC. Phys. Rev. B 22, 2842-2854 (1980).
 #     4H-SiC doped with N donor level:
 #     - Hexagonal site (H): 124 meV below Ec
 #     - Cubic site (C): 66 meV below Ec
@@ -108,8 +108,7 @@ class GeometricParameters:
 #     )
 
 
-
-def F_half_poly(x: np.ndarray) -> np.ndarray:
+def F_half_poly(x: np.ndarray | float) -> np.ndarray:
     """
     Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
     by Aymerich-Humet et al. (1981).
@@ -137,6 +136,7 @@ def F_half_poly(x: np.ndarray) -> np.ndarray:
     )
 
     return result
+
 
 if os.getenv("FD_POLY") == "1":
     fermi_dirac_integral = F_half_poly
@@ -465,7 +465,7 @@ def _setup_weak_form(
     #     )
     #     low = safe_exp(x_clip) / (1 + 0.27 * safe_exp(x_clip))
     #     return ng.IfPos(x_clip - 25.0, high, low)
-    
+
     def fermi_dirac_half_poly(x):
         """
         Fermi-Dirac integral of order 1/2 (j=1/2) using the approximation
@@ -504,7 +504,6 @@ def _setup_weak_form(
         #    これにより、x が非常に小さい負の値のときの数値的安定性を確保する
         return ng.IfPos(x - (-10.0), full_approx, boltzmann_approx)
 
-    
     if os.getenv("FD_POLY") == "1":
         fermi_dirac_half = fermi_dirac_half_poly
     else:

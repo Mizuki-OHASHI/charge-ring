@@ -20,8 +20,8 @@ from fermi_dirac_integral import (
 )
 
 # NOTE:
-# 1. Feenstra, R. M. Electrostatic potential for a hyperbolic probe tip near a semiconductor. J. Vac. Sci. Technol. B 21, 2080–2088 (2003).
-# 2. Ikeda, M., Matsunami, H. & Tanaka, T. Site effect on the impurity levels in 4 H , 6 H , and 1 5 R SiC. Phys. Rev. B 22, 2842–2854 (1980).
+# 1. Feenstra, R. M. Electrostatic potential for a hyperbolic probe tip near a semiconductor. J. Vac. Sci. Technol. B 21, 2080-2088 (2003).
+# 2. Ikeda, M., Matsunami, H. & Tanaka, T. Site effect on the impurity levels in 4 H , 6 H , and 1 5 R SiC. Phys. Rev. B 22, 2842-2854 (1980).
 #     4H-SiC doped with N donor level:
 #     - Hexagonal site (H): 124 meV below Ec
 #     - Cubic site (C): 66 meV below Ec
@@ -40,8 +40,12 @@ class PhysicalParameters:
     Na: float = 0.0  # Acceptor concentration [m^-3]
     sigma_s: float = 1e15  # Surface charge density at SiC/SiO2 interface [m^-2]
     point_charge_enabled: bool = False  # Enable point charge
-    point_charge_value: float = -1.0  # Point charge value in units of elementary charge (default: -1 for single electron)
-    point_charge_z: float = -10.0  # Point charge z position [nm] (note: z=0 is SiO2/vacuum interface, z=-l_sio2 is SiC/SiO2 interface)
+    point_charge_value: float = (
+        -1.0
+    )  # Point charge value in units of elementary charge (default: -1 for single electron)
+    point_charge_z: float = (
+        -10.0
+    )  # Point charge z position [nm] (note: z=0 is SiO2/vacuum interface, z=-l_sio2 is SiC/SiO2 interface)
     point_charge_r: float = 0.0  # Point charge r position [nm]
     m_de: float = 0.42 * const.m_e
     m_dh: float = 1.0 * const.m_e
@@ -101,9 +105,9 @@ class GeometricParameters:
 
     def __post_init__(self):
         assert self.n_tip_arc_points % 2 == 1, "n_tip_arc_points should be odd"
-        assert 0.01 <= self.mesh_scale <= 10.0, (
-            "mesh_scale should be between 0.01 and 10.0"
-        )
+        assert (
+            0.01 <= self.mesh_scale <= 10.0
+        ), "mesh_scale should be between 0.01 and 10.0"
 
 
 def find_fermi_level(
@@ -128,7 +132,8 @@ def find_fermi_level(
     if not res.converged:
         raise ValueError("Root finding for Fermi level did not converge")
 
-    _plot_fermi_level_determination(params, Ef, out_dir)
+    if plot:
+        _plot_fermi_level_determination(params, Ef, out_dir)
 
     return Ef
 
@@ -388,10 +393,10 @@ def run_fem_simulation(
         logger.info(f"{'=' * 60}")
 
         # Set boundary conditions
-        u.Set(0, definedon=msh.Boundaries("ground"))  # Dirichlet BC at ground
-        u.Set(V_tip / V_c, definedon=msh.Boundaries("tip"))  # Dirichlet BC at tip
+        u.Set(0, definedon=msh.Boundaries("ground"))  # type: ignore
+        u.Set(V_tip / V_c, definedon=msh.Boundaries("tip"))  # type: ignore
 
-        if i == 0:
+        if i == 0 and abs(V_tip) > 1e-6:
             # First voltage: full procedure (linear warm-start + homotopy)
             logger.info("First V_tip: performing full initialization...")
             _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh)
@@ -407,8 +412,17 @@ def run_fem_simulation(
 
         # Save results in subdirectory
         out_subdir = os.path.join(out_dir, f"V_tip_{V_tip:+.2f}V")
-        save_results(msh, u, epsilon_r, V_c, Feenstra, out_subdir)
-        logger.info(f"Results saved to {out_subdir}")
+        save_results(
+            msh,
+            u,
+            V_c,
+            Feenstra,
+            out_subdir,
+            save_mesh=False,
+            geom_params=geom,
+            num_points=200,
+            save_metadata=(i == 0),
+        )
 
 
 def _setup_weak_form(
@@ -567,7 +581,7 @@ def _warm_start_with_linear_solve(fes, u, epsilon_r, V_tip, V_c, geom, msh):
     for v_val in voltages_warmup:
         # Set boundary conditions (initialization)
         uh = ng.GridFunction(fes)
-        uh.Set(0, definedon=msh.Boundaries("ground"))
+        uh.Set(0, definedon=msh.Boundaries("ground"))  # type: ignore
         uh.Set(v_val / V_c, definedon=msh.Boundaries("tip"))
 
         # Set up bilinear and linear forms
@@ -639,7 +653,7 @@ def solve_with_direct_newton(
     a.Assemble()
 
     try:
-        converged, iter = Newton(a, u, **newton_kwargs)
+        converged, iter = Newton(a, u, **newton_kwargs)  # type: ignore
         if converged < 0:
             raise RuntimeError("Newton solver did not converge")
         logger.info(f"  [Direct Newton] Converged in {iter} iterations.")
@@ -666,7 +680,7 @@ def solve_with_direct_newton(
             a.Assemble()
 
             try:
-                converged, iter = Newton(a, u, **newton_kwargs)
+                converged, iter = Newton(a, u, **newton_kwargs)  # type: ignore
                 if converged < 0:
                     raise RuntimeError("Newton solver did not converge")
                 theta = trial
@@ -719,7 +733,7 @@ def _solve_homotopy_stage(
         a.Assemble()
 
         try:
-            converged, iter = Newton(a, u, **newton_kwargs)
+            converged, iter = Newton(a, u, **newton_kwargs)  # type: ignore
             if converged < 0:
                 raise RuntimeError("Newton solver did not converge")
             theta = trial
@@ -741,7 +755,17 @@ def _solve_homotopy_stage(
                 )
 
 
-def save_results(msh, u, epsilon_r, V_c, Feenstra: bool, out_dir: str):
+def save_results(
+    msh,
+    u,
+    V_c,
+    Feenstra: bool,
+    out_dir: str,
+    save_mesh: bool,
+    geom_params: GeometricParameters,
+    num_points: int,
+    save_metadata: bool,
+):
     """Save simulation results to disk
 
     Saved files:
@@ -755,24 +779,16 @@ def save_results(msh, u, epsilon_r, V_c, Feenstra: bool, out_dir: str):
     os.makedirs(out_dir, exist_ok=True)
 
     # Save mesh in Netgen format
-    msh.ngmesh.Save(os.path.join(out_dir, "mesh.vol"))
+    if save_mesh:
+        out_dir_parent = os.path.dirname(out_dir)
+        msh.ngmesh.Save(os.path.join(out_dir_parent, "mesh.vol"))
 
     u_np = u.vec.FV().NumPy()
     np.save(os.path.join(out_dir, "u_dimless.npy"), u_np)
-    np.save(os.path.join(out_dir, "u_volts.npy"), u_np * V_c)
+    # np.save(os.path.join(out_dir, "u_volts.npy"), u_np * V_c)
 
     # Save relative permittivity for each material in the order of material index
     mat_names = list(msh.GetMaterials())
-    eps_map = (
-        {
-            name: val
-            for name, val in zip(mat_names, [float(v) for v in epsilon_r.components])
-        }
-        if hasattr(epsilon_r, "components")
-        else {name: None for name in mat_names}
-    )
-    with open(os.path.join(out_dir, "epsilon_r.json"), "w") as f:
-        json.dump(eps_map, f, indent=2)
 
     # Save metadata
     meta = {
@@ -784,18 +800,38 @@ def save_results(msh, u, epsilon_r, V_c, Feenstra: bool, out_dir: str):
         "materials": mat_names,
         "boundaries": list(msh.GetBoundaries()),
     }
-    with open(os.path.join(out_dir, "metadata.json"), "w") as f:
-        json.dump(meta, f, indent=2)
+    if save_metadata:
+        parent_dir = os.path.dirname(out_dir)
+        with open(os.path.join(parent_dir, "metadata.json"), "w") as f:
+            json.dump(meta, f, indent=2)
 
     # Save VTK for visualization
-    vtk = ng.VTKOutput(
-        ma=msh,
-        coefs=[u],
-        names=["potential_dimless"],
-        filename=os.path.join(out_dir, "solution"),
-        subdivision=0,
+    # vtk = ng.VTKOutput(
+    #     ma=msh,
+    #     coefs=[u],
+    #     names=["potential_dimless"],
+    #     filename=os.path.join(out_dir, "solution"),
+    #     subdivision=0,
+    # )
+    # vtk.Do()
+
+    # Horizontal Profile (e.g., SiO2/SiC interface z = -l_sio2)
+    r_max_range = geom_params.region_radius
+    r_coords_eval = np.linspace(0, r_max_range, num_points)
+    z_level = -geom_params.l_sio2
+
+    # Create coordinate pairs for horizontal line
+    horiz_coords = np.column_stack(
+        (r_coords_eval, np.full_like(r_coords_eval, z_level))
     )
-    vtk.Do()
+    valid_r, potential_r = evaluate_potential_at_line(
+        u, msh, horiz_coords, "horizontal", V_c
+    )
+    np.savetxt(
+        os.path.join(out_dir, "line_profile_horizontal_2.txt"),
+        np.column_stack((valid_r, potential_r)),
+        header="r_nm potential_V",
+    )
 
     logger.info(f"Saved results to {out_dir}")
 
@@ -857,7 +893,8 @@ def parse_range_input(input_str: str) -> list[float]:
         min_val = float(parts[0])
         max_val = float(parts[1])
         step = float(parts[2])
-        return list(np.arange(min_val, max_val + step, step))
+        n_vals = int(np.floor((max_val - min_val) / step)) + 1
+        return [round((min_val + i * step), 8) for i in range(n_vals)]
     else:
         return [float(input_str)]
 
@@ -881,99 +918,149 @@ def sort_and_validate_voltages(V_tip_values: list[float]) -> list[float]:
     return sorted(V_tip_values, key=abs)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System."
-    )
-    parser.add_argument(
-        "--V_tip",
-        type=str,
-        default="2.0",
-        help="Tip voltages (single value or range min:max:step).",
-    )
-    parser.add_argument(
-        "--tip_radius", type=float, default=45.0, help="Tip radius in nm."
-    )
-    parser.add_argument(
-        "--tip_height", type=float, default=8.0, help="Tip-sample distance in nm."
-    )
-    parser.add_argument(
-        "--l_sio2", type=float, default=5.0, help="Thickness of SiO2 layer in nm."
-    )
-    parser.add_argument(
-        "--Nd", type=float, default=1e16, help="Donor concentration in cm^-3."
-    )
-    parser.add_argument(
-        "--sigma_s",
-        type=float,
-        default=1e12,
-        help="Surface charge density at SiC/SiO2 interface in cm^-2.",
-    )
-    parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin.")
-    parser.add_argument(
-        "--out_dir", type=str, default="out", help="Output directory for results."
-    )
-    parser.add_argument(
-        "--plot_fermi",
-        action="store_true",
-        help="Plot the Fermi level determination process.",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        choices=["Feenstra", "Boltzmann", "F", "B"],
-        default="Feenstra",
-        help="Choose the carrier statistics model.",
-    )
-    parser.add_argument(
-        "--assume_full_ionization",
-        action="store_true",
-        help="Assume complete ionization of donors (overrides model to Boltzmann).",
-    )
-    parser.add_argument(
-        "--mesh_scale", type=float, default=1.0, help="Scaling factor for mesh size."
-    )
-    parser.add_argument(
-        "--maxerr",
-        type=float,
-        default=1e-11,
-        help="Maximum error tolerance for Newton solver.",
-    )
-    parser.add_argument(
-        "--point_charge",
-        action="store_true",
-        help="Enable point charge at specified position.",
-    )
-    parser.add_argument(
-        "--point_charge_z",
-        type=float,
-        default=-5.0,
-        help="Point charge z position in nm (default: -5.0).",
-    )
-    parser.add_argument(
-        "--point_charge_r",
-        type=float,
-        default=0.0,
-        help="Point charge r position in nm (default: 0.0).",
-    )
-    parser.add_argument(
-        "--point_charge_value",
-        type=float,
-        default=-1.0,
-        help="Point charge value in units of elementary charge (default: -1 for single electron).",
-    )
-    args, unkown = parser.parse_known_args()
-    if unkown:
-        raise ValueError(f"Unknown arguments: {unkown}")
+def evaluate_potential_at_line(u_dimless, msh, coords, axis, V_c):
+    """Evaluate potential along a line with vectorized error handling.
+
+    Args:
+        u_dimless: GridFunction with dimensionless potential
+        msh: NGSolve mesh
+        coords: Array of coordinates to evaluate
+        axis: 'vertical' (r=0, vary z) or 'horizontal' (z=const, vary r)
+        V_c: Characteristic voltage
+
+    Returns:
+        valid_coords, potential_values (both as numpy arrays)
+    """
+    potential = []
+    valid = []
+
+    for coord in coords:
+        try:
+            if axis == "vertical":
+                val = u_dimless(msh(0, coord)) * V_c
+            else:  # horizontal
+                val = u_dimless(msh(coord[0], coord[1])) * V_c
+            potential.append(val)
+            valid.append(coord if axis == "vertical" else coord[0])
+        except Exception:
+            continue
+
+    return np.array(valid), np.array(potential)
+
+
+def main(args_dict: dict = {}):
+    if not args_dict:
+        JSON_ARGS = os.environ.get("NGSPY_JSON_ARGS")
+        if JSON_ARGS is None:
+            parser = argparse.ArgumentParser(
+                description="2D Axisymmetric Poisson Solver for a Tip-on-Semiconductor System."
+            )
+            parser.add_argument(
+                "--V_tip",
+                type=str,
+                default="2.0",
+                help="Tip voltages (single value or range min:max:step).",
+            )
+            parser.add_argument(
+                "--tip_radius", type=float, default=45.0, help="Tip radius in nm."
+            )
+            parser.add_argument(
+                "--tip_height",
+                type=float,
+                default=8.0,
+                help="Tip-sample distance in nm.",
+            )
+            parser.add_argument(
+                "--l_sio2",
+                type=float,
+                default=5.0,
+                help="Thickness of SiO2 layer in nm.",
+            )
+            parser.add_argument(
+                "--Nd", type=float, default=1e16, help="Donor concentration in cm^-3."
+            )
+            parser.add_argument(
+                "--sigma_s",
+                type=float,
+                default=1e12,
+                help="Surface charge density at SiC/SiO2 interface in cm^-2.",
+            )
+            parser.add_argument(
+                "--T", type=float, default=300.0, help="Temperature in Kelvin."
+            )
+            parser.add_argument(
+                "--out_dir",
+                type=str,
+                default="out",
+                help="Output directory for results.",
+            )
+            parser.add_argument(
+                "--plot_fermi",
+                action="store_true",
+                help="Plot the Fermi level determination process.",
+            )
+            parser.add_argument(
+                "--model",
+                type=str,
+                choices=["Feenstra", "Boltzmann", "F", "B"],
+                default="Feenstra",
+                help="Choose the carrier statistics model.",
+            )
+            parser.add_argument(
+                "--assume_full_ionization",
+                action="store_true",
+                help="Assume complete ionization of donors (overrides model to Boltzmann).",
+            )
+            parser.add_argument(
+                "--mesh_scale",
+                type=float,
+                default=1.0,
+                help="Scaling factor for mesh size.",
+            )
+            parser.add_argument(
+                "--maxerr",
+                type=float,
+                default=1e-11,
+                help="Maximum error tolerance for Newton solver.",
+            )
+            parser.add_argument(
+                "--point_charge",
+                action="store_true",
+                help="Enable point charge at specified position.",
+            )
+            parser.add_argument(
+                "--point_charge_z",
+                type=float,
+                default=-5.0,
+                help="Point charge z position in nm (default: -5.0).",
+            )
+            parser.add_argument(
+                "--point_charge_r",
+                type=float,
+                default=0.0,
+                help="Point charge r position in nm (default: 0.0).",
+            )
+            parser.add_argument(
+                "--point_charge_value",
+                type=float,
+                default=-1.0,
+                help="Point charge value in units of elementary charge (default: -1 for single electron).",
+            )
+            args, unkown = parser.parse_known_args()
+            if unkown:
+                raise ValueError(f"Unknown arguments: {unkown}")
+            args_dict.update(vars(args))
+        else:
+            args_dict.update(json.loads(JSON_ARGS))
 
     # Create output directory
-    os.makedirs(args.out_dir, exist_ok=True)
+    os.makedirs(args_dict["out_dir"], exist_ok=True)
     basicConfig(
         level=INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         filemode="w",
-        filename=os.path.join(args.out_dir, "main.log"),
+        filename=os.path.join(args_dict["out_dir"], "main.log"),
     )
 
     # Also log errors to the file via the root logger's exception hook
@@ -987,52 +1074,57 @@ def main():
 
     sys.excepthook = log_exception
 
-    print("Logging to", os.path.join(args.out_dir, "main.log"))
+    if not args_dict.get("silent", True):
+        print("Logging to", os.path.join(args_dict["out_dir"], "main.log"))
     start = datetime.now()
     logger.info(f"Started simulation at {start}")
 
-    if args.model.lower().startswith("b") and args.assume_full_ionization:
+    if (
+        args_dict["model"].lower().startswith("b")
+        and args_dict["assume_full_ionization"]
+    ):
         logger.warning(
             "Boltzmann model always assumes full ionization; --assume_full_ionization has no effect."
         )
 
     # Initialize physical parameters (convert units to m^-3, m^-2)
     phys_params = PhysicalParameters(
-        T=args.T,
-        Nd=args.Nd * 1e6,  # cm^-3 -> m^-3
-        sigma_s=args.sigma_s * 1e4,  # cm^-2 -> m^-2
-        point_charge_enabled=args.point_charge,
-        point_charge_value=args.point_charge_value,
-        point_charge_z=args.point_charge_z,
-        point_charge_r=args.point_charge_r,
+        T=args_dict["T"],
+        Nd=args_dict["Nd"] * 1e6,  # cm^-3 -> m^-3
+        sigma_s=args_dict["sigma_s"] * 1e4,  # cm^-2 -> m^-2
+        point_charge_enabled=args_dict["point_charge"],
+        point_charge_value=args_dict.get("point_charge_value"),
+        point_charge_z=args_dict.get("point_charge_z"),
+        point_charge_r=args_dict.get("point_charge_r"),
     )
 
     # Calculate Fermi level
-    Ef = find_fermi_level(phys_params, args.out_dir, plot=args.plot_fermi)
+    Ef = find_fermi_level(
+        phys_params, args_dict["out_dir"], plot=args_dict["plot_fermi"]
+    )
     phys_params.Ef = Ef
 
     # Initialize geometric parameters
     geom_params = GeometricParameters(
-        l_sio2=args.l_sio2,
-        tip_radius=args.tip_radius,
-        tip_height=args.tip_height,
-        mesh_scale=args.mesh_scale,
+        l_sio2=args_dict["l_sio2"],
+        tip_radius=args_dict["tip_radius"],
+        tip_height=args_dict["tip_height"],
+        mesh_scale=args_dict["mesh_scale"],
     )
 
-    V_tip_values = parse_range_input(args.V_tip)
-
+    V_tip_values = parse_range_input(args_dict["V_tip"])
     # Save parameters to JSON file
     all_params = {
         "physical": asdict(phys_params),
         "geometric": asdict(geom_params),
         "simulation": {
             "V_tips": V_tip_values,
-            "model": args.model,
-            "assume_full_ionization": args.assume_full_ionization,
+            "model": args_dict["model"],
+            "assume_full_ionization": args_dict["assume_full_ionization"],
         },
-        "args": vars(args),
+        "args": args_dict,
     }
-    with open(os.path.join(args.out_dir, "parameters.json"), "w") as f:
+    with open(os.path.join(args_dict["out_dir"], "parameters.json"), "w") as f:
         json.dump(all_params, f, indent=2)
 
     # Run FEM simulation
@@ -1040,10 +1132,10 @@ def main():
         phys=phys_params,
         geom=geom_params,
         V_tip_values=V_tip_values,
-        out_dir=args.out_dir,
-        Feenstra=(args.model[0].upper() == "F"),
-        assume_full_ionization=args.assume_full_ionization,
-        maxerr=args.maxerr,
+        out_dir=args_dict["out_dir"],
+        Feenstra=(args_dict["model"][0].upper() == "F"),
+        assume_full_ionization=args_dict["assume_full_ionization"],
+        maxerr=args_dict["maxerr"],
     )
 
     end = datetime.now()
