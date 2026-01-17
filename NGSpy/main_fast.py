@@ -4,7 +4,8 @@ import os
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from logging import INFO, basicConfig, getLogger
+import logging
+from logging import INFO, getLogger
 
 import matplotlib.pyplot as plt
 import ngsolve as ng
@@ -1055,7 +1056,15 @@ def main(args_dict: dict = {}):
 
     # Create output directory
     os.makedirs(args_dict["out_dir"], exist_ok=True)
-    basicConfig(
+
+    # Reset root logger handlers (必要: multiprocessing.Poolでワーカーが再利用される場合、
+    # basicConfig()は既存のハンドラがあると何もしないため)
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        handler.close()
+        root_logger.removeHandler(handler)
+
+    logging.basicConfig(
         level=INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
@@ -1093,9 +1102,9 @@ def main(args_dict: dict = {}):
         Nd=args_dict["Nd"] * 1e6,  # cm^-3 -> m^-3
         sigma_s=args_dict["sigma_s"] * 1e4,  # cm^-2 -> m^-2
         point_charge_enabled=args_dict["point_charge"],
-        point_charge_value=args_dict.get("point_charge_value"),
-        point_charge_z=args_dict.get("point_charge_z"),
-        point_charge_r=args_dict.get("point_charge_r"),
+        point_charge_value=args_dict.get("point_charge_value"), # type: ignore
+        point_charge_z=args_dict.get("point_charge_z"), # type: ignore
+        point_charge_r=args_dict.get("point_charge_r"), # type: ignore
     )
 
     # Calculate Fermi level
